@@ -11,20 +11,48 @@ from .server import mcp_server
 async def get_ad_accounts(access_token: Optional[str] = None, user_id: str = "me", limit: int = 200) -> str:
     """
     Get ad accounts accessible by a user.
-    
+
+    amount_spent and balance are returned in currency units (e.g. USD dollars),
+    not cents.
+
     Args:
         access_token: Meta API access token (optional - will use cached token if not provided)
         user_id: Meta user ID or "me" for the current user
         limit: Maximum number of accounts to return (default: 200)
     """
+    fields = "id,name,account_id,account_status,amount_spent,balance,currency,age,business_city,business_country_code"
+
+    # First get user's direct accounts
     endpoint = f"{user_id}/adaccounts"
-    params = {
-        "fields": "id,name,account_id,account_status,amount_spent,balance,currency,age,business_city,business_country_code",
-        "limit": limit
-    }
-    
+    params = {"fields": fields, "limit": limit}
     data = await make_api_request(endpoint, access_token, params)
-    
+
+    # Also query Business Manager ad accounts (client, owned, and partner-shared)
+    bm_ids = ["285682998480431"]  # Drak Marketing
+    seen_ids = {acc["id"] for acc in data.get("data", [])}
+
+    for bm_id in bm_ids:
+        for edge in ["client_ad_accounts", "owned_ad_accounts"]:
+            bm_endpoint = f"{bm_id}/{edge}"
+            bm_params = {"fields": fields, "limit": limit}
+            bm_data = await make_api_request(bm_endpoint, access_token, bm_params)
+            for acc in bm_data.get("data", []):
+                if acc["id"] not in seen_ids:
+                    data.setdefault("data", []).append(acc)
+                    seen_ids.add(acc["id"])
+
+    # Directly fetch known partner-shared accounts that BM edges may miss
+    known_account_ids = ["act_441611459623086"]  # Neon CRM Facebook Ads (owned by Neon One, shared with Drak Marketing)
+    for acct_id in known_account_ids:
+        if acct_id not in seen_ids:
+            try:
+                acct_data = await make_api_request(acct_id, access_token, {"fields": fields})
+                if "error" not in acct_data:
+                    data.setdefault("data", []).append(acct_data)
+                    seen_ids.add(acct_id)
+            except Exception:
+                pass  # Skip if not accessible
+
     return json.dumps(data, indent=2)
 
 
