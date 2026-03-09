@@ -56,16 +56,14 @@ async def make_api_request(
     Returns:
         API response as a dictionary
     """
-    # Validate access token before proceeding
+    # Validate access token before proceeding — throw, don't return error dict
     if not access_token:
         logger.error("API request attempted with blank access token")
-        return {
-            "error": {
-                "message": "Authentication Required",
-                "details": "A valid access token is required to access the Meta API",
-                "action_required": "Please authenticate first"
-            }
-        }
+        raise GraphAPIError({
+            "message": "Authentication Required — no access token provided",
+            "code": 190,
+            "action_required": "Please authenticate first",
+        })
         
     url = f"{META_GRAPH_API_BASE}/{endpoint}"
     
