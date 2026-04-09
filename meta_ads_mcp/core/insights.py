@@ -90,6 +90,9 @@ async def get_insights(object_id: str, access_token: Optional[str] = None,
         after: Pagination cursor to get the next set of results. Use the 'after' cursor from previous response's paging.next field.
         action_attribution_windows: Optional list of attribution windows (e.g., ["1d_click", "7d_click", "1d_view"]).
                    When specified, actions include additional fields for each window. The 'value' field always shows 7d_click.
+                   Use "incrementality" to get Meta's holdout-based incremental conversions
+                   (e.g., ["1d_click", "7d_click", "incrementality"]). Returns an "incrementality" key
+                   inside each action object with the estimated causal lift.
         compact: When True, strips redundant action-type duplicates from the response
                  (omni_*, onsite_web_*, offsite_conversion.fb_pixel_*, etc.) to reduce
                  payload size by ~60%. The canonical action types (purchase, add_to_cart,
@@ -100,7 +103,7 @@ async def get_insights(object_id: str, access_token: Optional[str] = None,
         
     endpoint = f"{object_id}/insights"
     params = {
-        "fields": "account_id,account_name,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,impressions,clicks,spend,cpc,cpm,ctr,reach,frequency,actions,action_values,conversions,unique_clicks,cost_per_action_type,cost_per_conversion,cost_per_incremental_conversion,conversions_incremental,incremental_results,incremental_cost_per_result",
+        "fields": "account_id,account_name,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,impressions,clicks,spend,cpc,cpm,ctr,reach,frequency,actions,action_values,conversions,unique_clicks,cost_per_action_type,cost_per_conversion",
         "level": level,
         "limit": limit
     }
