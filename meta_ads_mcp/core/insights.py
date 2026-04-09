@@ -100,7 +100,7 @@ async def get_insights(object_id: str, access_token: Optional[str] = None,
         
     endpoint = f"{object_id}/insights"
     params = {
-        "fields": "account_id,account_name,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,impressions,clicks,spend,cpc,cpm,ctr,reach,frequency,actions,action_values,conversions,unique_clicks,cost_per_action_type",
+        "fields": "account_id,account_name,campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,impressions,clicks,spend,cpc,cpm,ctr,reach,frequency,actions,action_values,conversions,unique_clicks,cost_per_action_type,cost_per_conversion,cost_per_incremental_conversion,conversions_incremental,incremental_results,incremental_cost_per_result",
         "level": level,
         "limit": limit
     }
