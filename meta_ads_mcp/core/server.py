@@ -11,6 +11,7 @@ from .auth import login as login_auth
 from .resources import list_resources, get_resource
 from .utils import logger
 from .pipeboard_auth import pipeboard_auth_manager
+from .write_gate import install_write_gate, is_write_enabled
 import time
 
 # Initialize FastMCP server
@@ -368,6 +369,13 @@ def main():
         logger.info(f"  - JSON Response: {mcp_server.settings.json_response}")
         logger.info(f"  - Streamable HTTP Path: {mcp_server.settings.streamable_http_path}")
         
+        # Install the read-only-by-default write gate after all tools have
+        # been imported (the imports above trigger @mcp_server.tool()
+        # decorators). See write_gate.install_write_gate for details.
+        install_write_gate(mcp_server, logger)
+        write_status = "ENABLED" if is_write_enabled() else "DISABLED (read-only)"
+        print(f"   Write mode: {write_status}  (META_ADS_MCP_WRITE)")
+
         # Start the FastMCP server with Streamable HTTP transport
         try:
             logger.info("Starting FastMCP server with Streamable HTTP transport")
@@ -383,4 +391,9 @@ def main():
     else:
         # Default stdio transport
         logger.info("Starting MCP server with stdio transport")
-        mcp_server.run(transport='stdio') 
+        # Install the read-only-by-default write gate after all tools have
+        # been registered via @mcp_server.tool() decorators on module import.
+        install_write_gate(mcp_server, logger)
+        write_status = "ENABLED" if is_write_enabled() else "DISABLED (read-only)"
+        logger.info("Meta Ads MCP starting with write mode: %s (override via META_ADS_MCP_WRITE)", write_status)
+        mcp_server.run(transport='stdio')

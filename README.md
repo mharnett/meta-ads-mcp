@@ -131,6 +131,25 @@ Meta Ads MCP also supports a local streamable HTTP transport, allowing you to ru
 
 For advanced users who need to self-host, the package can be installed from source. Local installations require creating your own Meta Developer App. **We recommend using [Remote MCP](https://pipeboard.co) for a simpler experience.**
 
+### Read-only by default
+
+The server **defaults to read-only mode**. Mutating tools (create / update / upload / duplicate on campaigns, adsets, ads, creatives, images, and budget schedules) are hidden from the tool list and refused at call time unless you explicitly opt in by setting the environment variable `META_ADS_MCP_WRITE=true`.
+
+This exists because a casual chat request ("go ahead and pause that") routed to an LLM that has this MCP connected can otherwise change live ad spend before anyone notices. Read-only is the safe default; flip the flag when you intentionally want to mutate.
+
+### Environment variables
+
+| Variable | Purpose |
+| --- | --- |
+| `META_ADS_MCP_WRITE` | Set to `true` (or `1` / `yes`) to enable mutating tools. **Defaults to off.** |
+| `META_APP_ID` | Meta App ID for direct OAuth (not needed with Pipeboard). |
+| `PIPEBOARD_API_TOKEN` | Enables Pipeboard-based authentication (recommended). |
+| `META_ADS_DISABLE_CALLBACK_SERVER` | Disables the local OAuth callback server. |
+| `META_ADS_DISABLE_LOGIN_LINK` | Hides the `get_login_link` tool. |
+| `META_ADS_DISABLE_ADS_LIBRARY` | Hides the `search_ads_archive` tool. |
+| `META_ADS_ENABLE_REPORTS` | Registers the `generate_report` tool. |
+| `META_ADS_ENABLE_DUPLICATION` | Registers `duplicate_campaign` / `duplicate_adset` / `duplicate_ad` / `duplicate_creative`. |
+
 ### Available MCP Tools
 
 1. `mcp_meta_ads_get_ad_accounts`
