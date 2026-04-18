@@ -36,11 +36,6 @@ WRITE_TOOLS: frozenset[str] = frozenset(
         "update_campaign",
         # Uploads (mutates ad account assets)
         "upload_ad_image",
-        # Duplication tools (conditional on META_ADS_ENABLE_DUPLICATION)
-        "duplicate_campaign",
-        "duplicate_adset",
-        "duplicate_ad",
-        "duplicate_creative",
     }
 )
 
@@ -48,7 +43,7 @@ WRITE_TOOLS: frozenset[str] = frozenset(
 WRITE_DISABLED_MESSAGE: str = (
     "Write operations are disabled. Set META_ADS_MCP_WRITE=true in the MCP "
     "server environment to enable mutating tools "
-    "(create/update/upload/duplicate)."
+    "(create/update/upload)."
 )
 
 

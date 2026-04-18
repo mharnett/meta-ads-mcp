@@ -59,11 +59,10 @@ python -m tests.test_http_transport
 - `tools/call` method - Tool execution with parameters
 - Error handling and edge cases
 
-### ✅ Authentication Integration
+### Authentication Integration
 - **No Authentication** - Proper rejection of unauthenticated requests
-- **Pipeboard Token** - Primary authentication method (`X-PIPEBOARD-API-TOKEN`)
+- **Bearer Token** - Primary authentication method (`Authorization: Bearer <token>`)
 - **Meta App ID** - Fallback authentication method (`X-META-APP-ID`)
-- **Multiple Auth Methods** - Priority handling (Pipeboard takes precedence)
 
 ### ✅ Tool Execution
 - All 26 Meta Ads tools accessible via HTTP
@@ -75,9 +74,9 @@ python -m tests.test_http_transport
 The test suite runs multiple authentication scenarios:
 
 1. **No Authentication**: Tests that tools properly require authentication
-2. **Pipeboard Token**: Tests the primary authentication path
-3. **Custom Meta App**: Tests the fallback authentication path  
-4. **Both Methods**: Tests authentication priority (Pipeboard preferred)
+2. **Bearer Token**: Tests the primary authentication path
+3. **Custom Meta App**: Tests the fallback authentication path
+4. **Both Methods**: Tests authentication priority (Bearer preferred)
 
 ## Expected Results
 

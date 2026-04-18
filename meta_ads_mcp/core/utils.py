@@ -17,20 +17,14 @@ import platform
 META_APP_ID = os.environ.get("META_APP_ID", "")
 META_APP_SECRET = os.environ.get("META_APP_SECRET", "")
 
-# Only show warnings about Meta credentials if we're not using Pipeboard
-# Check for Pipeboard token in environment
-using_pipeboard = bool(os.environ.get("PIPEBOARD_API_TOKEN", ""))
-
-# Print warning if Meta app credentials are not configured and not using Pipeboard
-if not using_pipeboard:
+# If neither a direct META_ACCESS_TOKEN nor OAuth app credentials are configured,
+# surface a warning so the user knows why downstream auth calls will fail.
+if not os.environ.get("META_ACCESS_TOKEN"):
     if not META_APP_ID:
         print("WARNING: META_APP_ID environment variable is not set.")
-        print("RECOMMENDED: Use Pipeboard authentication by setting PIPEBOARD_API_TOKEN instead.")
-        print("ALTERNATIVE: For direct Meta authentication, set META_APP_ID to your Meta App ID.")
+        print("Set META_ACCESS_TOKEN for direct-token auth, or META_APP_ID for the local OAuth flow.")
     if not META_APP_SECRET:
-        print("WARNING: META_APP_SECRET environment variable is not set.")
-        print("NOTE: This is only needed for direct Meta authentication. Pipeboard authentication doesn't require this.")
-        print("RECOMMENDED: Use Pipeboard authentication by setting PIPEBOARD_API_TOKEN instead.")
+        print("NOTE: META_APP_SECRET is not set. Required only to exchange for long-lived tokens via the local OAuth flow.")
 
 # Configure logging to file
 def setup_logging():
@@ -64,8 +58,8 @@ def setup_logging():
     # Log startup information
     logger.info(f"Logging initialized. Log file: {log_file}")
     logger.info(f"Platform: {platform.system()} {platform.release()}")
-    logger.info(f"Using Pipeboard authentication: {using_pipeboard}")
-    
+    logger.info(f"META_ACCESS_TOKEN set: {bool(os.environ.get('META_ACCESS_TOKEN'))}")
+
     return logger
 
 # Create the logger instance to be imported by other modules

@@ -10,6 +10,15 @@ import time
 import os
 
 
+@pytest.fixture(autouse=True)
+def _isolate_auth_env(monkeypatch):
+    """Defensive: make sure no stray env var from the dev shell leaks into
+    tests. Specifically keep PIPEBOARD_API_TOKEN unset so any residue in
+    module state from a previous removal of pipeboard support is flagged
+    rather than silently re-enabled."""
+    monkeypatch.delenv("PIPEBOARD_API_TOKEN", raising=False)
+
+
 @pytest.fixture(scope="session")
 def server_url():
     """Default server URL for tests"""
@@ -47,10 +56,10 @@ def test_headers():
 
 
 @pytest.fixture
-def pipeboard_auth_headers(test_headers):
-    """Headers with Pipeboard authentication token"""
+def bearer_auth_headers(test_headers):
+    """Headers with a generic Bearer access token"""
     headers = test_headers.copy()
-    headers["Authorization"] = "Bearer test_pipeboard_token_12345"
+    headers["Authorization"] = "Bearer test_bearer_token_12345"
     return headers
 
 
@@ -59,4 +68,4 @@ def meta_app_auth_headers(test_headers):
     """Headers with Meta app ID authentication"""
     headers = test_headers.copy()
     headers["X-META-APP-ID"] = "123456789012345"
-    return headers 
+    return headers

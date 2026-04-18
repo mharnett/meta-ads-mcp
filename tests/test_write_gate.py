@@ -66,7 +66,6 @@ def _registered_tool_names() -> set[str]:
     """
     # Enable every optional tool so the drift alarm exercises them.
     os.environ.setdefault("META_ADS_ENABLE_REPORTS", "1")
-    os.environ.setdefault("META_ADS_ENABLE_DUPLICATION", "1")
     # Ads library is on by default; login link is on by default.
 
     import importlib
@@ -76,8 +75,8 @@ def _registered_tool_names() -> set[str]:
 
     # Re-import conditional modules so the env flags set above take effect
     # even if a prior test import happened before the flags were set.
-    from meta_ads_mcp.core import reports, duplication, ads_library, authentication
-    for mod in (reports, duplication, ads_library, authentication):
+    from meta_ads_mcp.core import reports, ads_library, authentication
+    for mod in (reports, ads_library, authentication):
         importlib.reload(mod)
 
     mcp = server_module.mcp_server

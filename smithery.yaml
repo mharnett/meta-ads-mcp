@@ -3,34 +3,29 @@ startCommand:
   configSchema:
     type: object
     properties:
-      pipeboardApiToken:
+      metaAccessToken:
         type: string
-        description: "Pipeboard API token for Meta authentication (recommended). Get your free token at https://pipeboard.co"
+        description: "Meta System User access token used directly for API calls."
       metaAppId:
         type: string
-        description: "Meta App ID (Client ID) for direct OAuth method (only needed if not using Pipeboard authentication)"
+        description: "Meta App ID (Client ID) for the local OAuth flow (only needed if metaAccessToken is not provided)."
     required: []
   commandFunction: |
     (config) => {
       const env = {};
       const args = ["-m", "meta_ads_mcp"];
-      
-      // Add Pipeboard API token to environment if provided (recommended auth method)
-      if (config.pipeboardApiToken) {
-        env.PIPEBOARD_API_TOKEN = config.pipeboardApiToken;
+
+      if (config.metaAccessToken) {
+        env.META_ACCESS_TOKEN = config.metaAccessToken;
       }
-      
-      // Add Meta App ID as command-line argument if provided (alternative auth method)
+
       if (config.metaAppId) {
         args.push("--app-id", config.metaAppId);
       }
-      
+
       return {
         command: 'python',
         args: args,
         env: env
       };
-    } 
-remotes:
-  - type: streamable-http
-    url: "https://mcp.pipeboard.co/meta-ads-mcp"
+    }

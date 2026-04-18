@@ -27,8 +27,10 @@ if ENABLE_REPORT_GENERATION:
         """
         Generate comprehensive Meta Ads performance reports.
 
-        **This is a premium feature available with Pipeboard Pro.**
-        
+        This tool is a stub: report generation is not implemented in this build.
+        Enable `META_ADS_ENABLE_REPORTS` only if you have a custom report backend
+        wired up on top of this module.
+
         Args:
             account_id: Meta Ads account ID (format: act_XXXXXXXXX)
             access_token: Meta API access token (optional - will use cached token if not provided)
@@ -64,26 +66,13 @@ if ENABLE_REPORT_GENERATION:
                 }
             }, indent=2)
 
-        # Return premium feature upgrade message
+        # Report generation is not implemented in this local build.
         return json.dumps({
-            "error": "premium_feature_required",
-            "message": "Professional report generation is a premium feature",
+            "error": "not_implemented",
+            "message": "Report generation is not implemented in this build.",
             "details": {
                 "feature": "Automated PDF Report Generation",
-                "description": "Create professional client-ready reports with performance insights, recommendations, and white-label branding",
-                "benefits": [
-                    "Executive summary with key metrics",
-                    "Performance breakdowns and trends", 
-                    "Audience insights and recommendations",
-                    "Professional PDF formatting",
-                    "White-label branding options",
-                    "Campaign comparison analysis",
-                    "Creative performance insights",
-                    "Automated scheduling options"
-                ],
-                "upgrade_url": "https://pipeboard.co/upgrade",
-                "contact_email": "info@pipeboard.co",
-                "early_access": "Contact us for early access and special pricing"
+                "description": "This tool is a stub. Wire up your own report backend if you need it.",
             },
             "request_parameters": {
                 "account_id": account_id,

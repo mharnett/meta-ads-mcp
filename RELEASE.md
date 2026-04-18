@@ -44,9 +44,6 @@ This repository uses GitHub Actions to automatically publish releases to PyPI. H
 
 4. **Verify release** (optional):
    ```bash
-   # Check GitHub release
-   curl -s "https://api.github.com/repos/pipeboard-co/meta-ads-mcp/releases/latest" | grep -E '"tag_name"|"name"'
-   
    # Check PyPI availability (wait 2-3 minutes)
    curl -s "https://pypi.org/pypi/meta-ads-mcp/json" | grep -E '"version"|"0.7.8"'
    ```
@@ -166,6 +163,4 @@ uvx meta-ads-mcp@0.7.8
 ## 📈 Release Metrics
 
 Track successful releases:
-- **GitHub Releases**: https://github.com/pipeboard-co/meta-ads-mcp/releases
 - **PyPI Package**: https://pypi.org/project/meta-ads-mcp/
-- **Actions History**: https://github.com/pipeboard-co/meta-ads-mcp/actions 

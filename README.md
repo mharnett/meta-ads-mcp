@@ -4,21 +4,12 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for in
 
 > **DISCLAIMER:** This is an unofficial third-party tool and is not associated with, endorsed by, or affiliated with Meta in any way. This project is maintained independently and uses Meta's public APIs according to their terms of service. Meta, Facebook, Instagram, and other Meta brand names are trademarks of their respective owners.
 
-[![Meta Ads MCP Server Demo](https://github.com/user-attachments/assets/3e605cee-d289-414b-814c-6299e7f3383e)](https://github.com/user-attachments/assets/3e605cee-d289-414b-814c-6299e7f3383e)
-
-[![MCP Badge](https://lobehub.com/badge/mcp/nictuku-meta-ads-mcp)](https://lobehub.com/mcp/nictuku-meta-ads-mcp)
-
-mcp-name: co.pipeboard/meta-ads-mcp
-
-## Community & Support
-
-- [Discord](https://discord.gg/YzMwQ8zrjr). Join the community.
-- [Email Support](mailto:info@pipeboard.co). Email us for support.
+This fork is maintained for local use: it runs as a stdio MCP process on your own machine and authenticates directly against the Meta Graph API using either a System User access token or a local OAuth flow. There is no cloud relay in this build.
 
 ## Table of Contents
 
-- [🚀 Getting started with Remote MCP (Recommended for Marketers)](#getting-started-with-remote-mcp-recommended)
-- [Local Installation (Technical Users Only)](#local-installation-technical-users-only)
+- [Getting Started (Local)](#getting-started-local)
+- [Authentication](#authentication)
 - [Features](#features)
 - [Configuration](#configuration)
 - [Available MCP Tools](#available-mcp-tools)
@@ -27,84 +18,50 @@ mcp-name: co.pipeboard/meta-ads-mcp
 - [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
 
-## Getting started with Remote MCP (Recommended)
+## Getting Started (Local)
 
-The fastest and most reliable way to get started is to **[🚀 Get started with our Meta Ads Remote MCP](https://pipeboard.co)**. Our cloud service uses streamable HTTP transport for reliable, scalable access to Meta Ads data. No technical setup required - just connect and start analyzing your ad campaigns with AI!
+1. Install from source (inside a virtualenv):
+   ```bash
+   pip install -e .
+   ```
+2. Provide credentials via environment variables (see [Authentication](#authentication)).
+3. Run the server over stdio (the transport every MCP client speaks):
+   ```bash
+   python -m meta_ads_mcp
+   ```
+4. Point your MCP client (Claude Desktop, Cursor, etc.) at the local command.
 
-### For Claude Pro/Max Users
+An optional local HTTP transport is also available for custom integrations — see [STREAMABLE_HTTP_SETUP.md](STREAMABLE_HTTP_SETUP.md).
 
-1. Go to [claude.ai/settings/integrations](https://claude.ai/settings/integrations) (requires Claude Pro or Max)
-2. Click "Add Integration" and enter:
-   - **Name**: "Pipeboard Meta Ads" (or any name you prefer)
-   - **Integration URL**: `https://mcp.pipeboard.co/meta-ads-mcp`
-3. Click "Connect" next to the integration and follow the prompts to:
-   - Login to Pipeboard
-   - Connect your Facebook Ads account
+## Authentication
 
-That's it! You can now ask Claude to analyze your Meta ad campaigns, get performance insights, and manage your advertising.
+Two local modes are supported. Pick one.
 
-#### Advanced: Direct Token Authentication (Claude)
+### 1. Direct System User token (recommended)
 
-For direct token-based authentication without the interactive flow, use this URL format when adding the integration:
+The simplest setup. Generate a System User access token in your Meta Business account, export it, and you are done:
 
-```
-https://mcp.pipeboard.co/meta-ads-mcp?token=YOUR_PIPEBOARD_TOKEN
-```
-
-Get your token at [pipeboard.co/api-tokens](https://pipeboard.co/api-tokens).
-
-### For Cursor Users
-
-Add the following to your `~/.cursor/mcp.json`. Once you enable the remote MCP, click on "Needs login" to finish the login process.
-
-
-```json
-{
-  "mcpServers": {
-    "meta-ads-remote": {
-      "url": "https://mcp.pipeboard.co/meta-ads-mcp"
-    }
-  }
-}
+```bash
+export META_ACCESS_TOKEN="EAAG..."
 ```
 
-#### Advanced: Direct Token Authentication (Cursor)
+The token is used as-is for every Graph API call. No OAuth round-trip. No local callback server. No cloud relay.
 
-If you prefer to authenticate without the interactive login flow, you can include your Pipeboard API token directly in the URL:
+### 2. Local OAuth flow
 
-```json
-{
-  "mcpServers": {
-    "meta-ads-remote": {
-      "url": "https://mcp.pipeboard.co/meta-ads-mcp?token=YOUR_PIPEBOARD_TOKEN"
-    }
-  }
-}
+If you want the MCP itself to mint a user access token for you, set your Meta Developer App credentials:
+
+```bash
+export META_APP_ID="<your Meta App ID>"
+export META_APP_SECRET="<your Meta App secret>"   # required to exchange for long-lived tokens
 ```
 
-Get your token at [pipeboard.co/api-tokens](https://pipeboard.co/api-tokens).
+Then either:
 
-### For Other MCP Clients
+- Run `python -m meta_ads_mcp --login` once to complete the OAuth flow, or
+- Call the `get_login_link` MCP tool from your client — the server starts a short-lived callback listener on `localhost:<port>/callback` and returns a clickable Facebook OAuth URL. When you approve, the token is cached under `~/Library/Application Support/meta-ads-mcp/token_cache.json` (macOS) / `~/.config/meta-ads-mcp/` (Linux) / `%APPDATA%\meta-ads-mcp\` (Windows).
 
-Use the Remote MCP URL: `https://mcp.pipeboard.co/meta-ads-mcp`
-
-**[📖 Get detailed setup instructions for your AI client here](https://pipeboard.co)**
-
-#### Advanced: Direct Token Authentication (OpenClaw and other clients)
-
-For MCP clients that support token-based authentication, you can append your Pipeboard API token to the URL:
-
-```
-https://mcp.pipeboard.co/meta-ads-mcp?token=YOUR_PIPEBOARD_TOKEN
-```
-
-This bypasses the interactive login flow and authenticates immediately. Get your token at [pipeboard.co/api-tokens](https://pipeboard.co/api-tokens).
-
-## Local Installation (Advanced Technical Users Only)
-
-🚀 **We strongly recommend using [Remote MCP](https://pipeboard.co) instead** - it's faster, more reliable, and requires no technical setup.
-
-Meta Ads MCP also supports a local streamable HTTP transport, allowing you to run it as a standalone HTTP API for web applications and custom integrations. See **[Streamable HTTP Setup Guide](STREAMABLE_HTTP_SETUP.md)** for complete instructions.
+If `META_ACCESS_TOKEN` is set it takes precedence over any cached OAuth token.
 
 ## Features
 
@@ -118,22 +75,13 @@ Meta Ads MCP also supports a local streamable HTTP transport, allowing you to ru
 - **Cross-Platform Integration**: Works with Facebook, Instagram, and all Meta ad platforms
 - **Universal LLM Support**: Compatible with any MCP client including Claude Desktop, Cursor, Cherry Studio, and more
 - **Enhanced Search**: Generic search function includes page searching when queries mention "page" or "pages"
-- **Simple Authentication**: Easy setup with secure OAuth authentication
 - **Cross-Platform Support**: Works on Windows, macOS, and Linux
 
 ## Configuration
 
-### Remote MCP (Recommended)
-
-**[✨ Get started with Remote MCP here](https://pipeboard.co)** - no technical setup required! Just connect your Facebook Ads account and start asking AI to analyze your campaigns.
-
-### Local Installation (Advanced Technical Users)
-
-For advanced users who need to self-host, the package can be installed from source. Local installations require creating your own Meta Developer App. **We recommend using [Remote MCP](https://pipeboard.co) for a simpler experience.**
-
 ### Read-only by default
 
-The server **defaults to read-only mode**. Mutating tools (create / update / upload / duplicate on campaigns, adsets, ads, creatives, images, and budget schedules) are hidden from the tool list and refused at call time unless you explicitly opt in by setting the environment variable `META_ADS_MCP_WRITE=true`.
+The server **defaults to read-only mode**. Mutating tools (create / update / upload on campaigns, adsets, ads, creatives, images, and budget schedules) are hidden from the tool list and refused at call time unless you explicitly opt in by setting the environment variable `META_ADS_MCP_WRITE=true`.
 
 This exists because a casual chat request ("go ahead and pause that") routed to an LLM that has this MCP connected can otherwise change live ad spend before anyone notices. Read-only is the safe default; flip the flag when you intentionally want to mutate.
 
@@ -142,13 +90,13 @@ This exists because a casual chat request ("go ahead and pause that") routed to 
 | Variable | Purpose |
 | --- | --- |
 | `META_ADS_MCP_WRITE` | Set to `true` (or `1` / `yes`) to enable mutating tools. **Defaults to off.** |
-| `META_APP_ID` | Meta App ID for direct OAuth (not needed with Pipeboard). |
-| `PIPEBOARD_API_TOKEN` | Enables Pipeboard-based authentication (recommended). |
+| `META_ACCESS_TOKEN` | Meta System User access token. Used as-is for every API call. |
+| `META_APP_ID` | Meta App ID for the local OAuth flow. Not needed when `META_ACCESS_TOKEN` is set. |
+| `META_APP_SECRET` | Meta App secret. Required for exchanging short-lived tokens for long-lived ones in the local OAuth flow. |
 | `META_ADS_DISABLE_CALLBACK_SERVER` | Disables the local OAuth callback server. |
 | `META_ADS_DISABLE_LOGIN_LINK` | Hides the `get_login_link` tool. |
 | `META_ADS_DISABLE_ADS_LIBRARY` | Hides the `search_ads_archive` tool. |
-| `META_ADS_ENABLE_REPORTS` | Registers the `generate_report` tool. |
-| `META_ADS_ENABLE_DUPLICATION` | Registers `duplicate_campaign` / `duplicate_adset` / `duplicate_ad` / `duplicate_creative`. |
+| `META_ADS_ENABLE_REPORTS` | Registers the `generate_report` tool (stub in this build). |
 
 ### Available MCP Tools
 
@@ -203,7 +151,7 @@ This exists because a casual chat request ("go ahead and pause that") routed to 
        - `OUTCOME_LEADS`
        - `OUTCOME_SALES`
        - `OUTCOME_APP_PROMOTION`
-       
+
        Note: Legacy objectives such as `BRAND_AWARENESS`, `LINK_CLICKS`, `CONVERSIONS`, `APP_INSTALLS`, etc. are no longer valid for new campaigns and will cause a 400 error. Use the outcome-based values above. Common mappings:
        - `BRAND_AWARENESS` → `OUTCOME_AWARENESS`
        - `REACH` → `OUTCOME_AWARENESS`
@@ -465,23 +413,22 @@ This exists because a casual chat request ("go ahead and pause that") routed to 
 
 Meta Ads MCP is licensed under the [Business Source License 1.1](LICENSE), which means:
 
-- ✅ **Free to use** for individual and business purposes
-- ✅ **Modify and customize** as needed
-- ✅ **Redistribute** to others
-- ✅ **Becomes fully open source** (Apache 2.0) on January 1, 2029
+- **Free to use** for individual and business purposes
+- **Modify and customize** as needed
+- **Redistribute** to others
+- **Becomes fully open source** (Apache 2.0) on January 1, 2029
 
-The only restriction is that you cannot offer this as a competing hosted service. For questions about commercial licensing, please contact us.
+The only restriction is that you cannot offer this as a competing hosted service.
 
 ## Privacy and Security
 
-Meta Ads MCP follows security best practices with secure token management and automatic authentication handling. 
+Meta Ads MCP follows security best practices with secure token management and automatic authentication handling.
 
-- **Remote MCP**: All authentication is handled securely in the cloud - no local token storage required
-- **Local Installation**: Tokens are cached securely on your local machine
+- Tokens provided via `META_ACCESS_TOKEN` are kept in your process environment only (consider sourcing them from your OS keychain at startup).
+- Tokens obtained via the local OAuth flow are cached on disk under the platform-specific config directory; delete the cache file to force re-authentication.
+- No token material leaves your machine except in outbound calls to Meta's own Graph API.
 
 ## Testing
-
-### Basic Testing
 
 Test your Meta Ads MCP connection with any MCP client:
 
@@ -489,14 +436,14 @@ Test your Meta Ads MCP connection with any MCP client:
 2. **Check Account Details**: Use `mcp_meta_ads_get_account_info` with your account ID
 3. **List Campaigns**: Try `mcp_meta_ads_get_campaigns` to see your ad campaigns
 
-For detailed local installation testing, see the source repository.
+Run the test suite:
+
+```bash
+pytest -q
+```
 
 ## Troubleshooting
 
-### 💡 Quick Fix: Skip the Technical Setup!
-
-The easiest way to avoid any setup issues is to **[🎯 use our Remote MCP instead](https://pipeboard.co)**. No downloads, no configuration - just connect your ads account and start getting AI insights on your campaigns immediately!
-
-### Local Installation Issues
-
-For local installation issues, refer to the source repository. **For the easiest experience, we recommend using [Remote MCP](https://pipeboard.co) instead.**
+- **"Authentication Required" errors**: Confirm one of `META_ACCESS_TOKEN` or `META_APP_ID` (+ `META_APP_SECRET` for long-lived tokens) is set in the environment the MCP server sees. Claude Desktop, Cursor, and other MCP clients use the environment they spawn the command in — restart the client after changing env vars.
+- **OAuth callback times out**: The default local callback URL is `http://localhost:<port>/callback`. If you've set `META_ADS_DISABLE_CALLBACK_SERVER`, only direct-token auth (`META_ACCESS_TOKEN`) will work.
+- **Cache file corrupt**: Remove the cached token file (`~/Library/Application Support/meta-ads-mcp/token_cache.json` on macOS) and re-run the login flow.
