@@ -2,12 +2,17 @@
 Pytest configuration for Meta Ads MCP tests
 
 This file provides common fixtures and configuration for all tests.
+
+NOTE: The previous `check_server_running` fixture has been removed. It used
+`pytest.skip()` when no MCP server was listening on :8080, which is the
+rubric #4 silent-skip antipattern (tests pass green when nothing ran).
+HTTP-style tests have been converted to in-process tool tests, and the
+remaining transport coverage lives in `test_http_transport_smoke.py`, which
+spawns its own subprocess (see `mcp_http_server` fixture there) and HARD-FAILS
+if the server can't start.
 """
 
 import pytest
-import requests
-import time
-import os
 
 
 @pytest.fixture(autouse=True)
@@ -17,32 +22,6 @@ def _isolate_auth_env(monkeypatch):
     module state from a previous removal of pipeboard support is flagged
     rather than silently re-enabled."""
     monkeypatch.delenv("PIPEBOARD_API_TOKEN", raising=False)
-
-
-@pytest.fixture(scope="session")
-def server_url():
-    """Default server URL for tests"""
-    return os.environ.get("MCP_TEST_SERVER_URL", "http://localhost:8080")
-
-
-@pytest.fixture(scope="session")
-def check_server_running(server_url):
-    """
-    Check if the MCP server is running before running tests.
-    
-    This fixture will skip tests if the server is not available.
-    """
-    try:
-        response = requests.get(f"{server_url}/", timeout=5)
-        # We expect 404 for root path, but it means server is running
-        if response.status_code not in [200, 404]:
-            pytest.skip(f"MCP server not responding correctly at {server_url}")
-        return True
-    except requests.exceptions.RequestException:
-        pytest.skip(
-            f"MCP server not running at {server_url}. "
-            f"Start with: python -m meta_ads_mcp --transport streamable-http"
-        )
 
 
 @pytest.fixture
