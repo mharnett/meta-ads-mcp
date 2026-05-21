@@ -174,7 +174,7 @@ class TestAssertWriteAllowed:
             assert_write_allowed(name, {"META_ADS_MCP_WRITE": "true"})
 
     def test_error_message_points_at_env_var_fix(self) -> None:
-        with pytest.raises(PermissionError) as excinfo:
+        with pytest.raises(PermissionError, match="META_ADS_MCP_WRITE=true") as excinfo:
             assert_write_allowed("create_campaign", {})
         assert "META_ADS_MCP_WRITE=true" in str(excinfo.value)
 

@@ -15,7 +15,7 @@ class TestSafeResponse:
         data = json.dumps(large)
         result = safe_response(data, "test")
         parsed = json.loads(result)
-        assert len(parsed) < len(large)
+        assert 0 < len(parsed) < len(large)
 
     def test_truncates_large_data_key(self):
         obj = {"data": [{"id": i, "payload": "x" * 200} for i in range(5000)]}

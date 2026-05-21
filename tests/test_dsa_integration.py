@@ -315,7 +315,8 @@ class TestDSAIntegration:
                 # Verify API call included dsa_beneficiary in fields
                 mock_api.assert_called_once()
                 call_args = mock_api.call_args
-                assert "dsa_beneficiary" in str(call_args)
+                params = call_args[0][2]
+                assert "dsa_beneficiary" in params.get("fields", "")
     
     @pytest.mark.asyncio
     async def test_dsa_beneficiary_us_account_integration(self):

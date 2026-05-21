@@ -194,10 +194,10 @@ class TestBidStrategyValidation:
 
         result_data = parse_result(result)
 
-        # Should NOT return a validation error
-        if "error" in result_data:
-            assert "bid_amount is required" not in result_data.get("error", "")
-            assert "bid_constraints is required" not in result_data.get("error", "")
+        # Should NOT return a validation error about bid_amount/bid_constraints
+        error_text = result_data.get("error", "") if isinstance(result_data, dict) else ""
+        assert "bid_amount is required" not in error_text
+        assert "bid_constraints is required" not in error_text
 
     @pytest.mark.asyncio
     async def test_update_adset_min_roas_requires_bid_constraints(

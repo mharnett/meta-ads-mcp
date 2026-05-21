@@ -191,11 +191,13 @@ class TestDSABeneficiaryParameter:
                 # Verify the API was called with DSA beneficiary parameter (pre-flight campaign check + actual create)
                 assert mock_api.call_count >= 1
                 call_args = mock_api.call_args
-                assert "dsa_beneficiary" in str(call_args)
-                
+                params = call_args[0][2]
+                assert "dsa_beneficiary" in params
+                assert params["dsa_beneficiary"] == "Test Organization GmbH"
+
                 # Verify response contains ad set ID
                 result_data = json.loads(result)
-                assert "id" in result_data
+                assert result_data["id"] == "23842588888640185"
     
     @pytest.mark.asyncio
     async def test_create_adset_with_dsa_beneficiary_validation_error(self):
@@ -284,9 +286,13 @@ class TestDSABeneficiaryParameter:
                 call_args = mock_api.call_args
 
                 # Verify DSA beneficiary is sent as separate parameter, not in targeting
-                call_str = str(call_args)
-                assert "dsa_beneficiary" in call_str
-                assert "Test Organization GmbH" in call_str
+                params = call_args[0][2]
+                assert "dsa_beneficiary" in params
+                assert params["dsa_beneficiary"] == "Test Organization GmbH"
+                # And not nested inside targeting
+                targeting_param = params.get("targeting")
+                if isinstance(targeting_param, dict):
+                    assert "dsa_beneficiary" not in targeting_param
     
     @pytest.mark.asyncio
     async def test_create_adset_dsa_beneficiary_parameter_formats(self):
@@ -316,7 +322,8 @@ class TestDSABeneficiaryParameter:
                     # Verify the API was called with the beneficiary name (pre-flight campaign check + actual create)
                     assert mock_api.call_count >= 1
                     call_args = mock_api.call_args
-                    assert beneficiary_name in str(call_args)
+                    params = call_args[0][2]
+                    assert params.get("dsa_beneficiary") == beneficiary_name
 
 
 class TestDSAPermissionHandling:
@@ -649,7 +656,8 @@ class TestDSABeneficiaryRetrieval:
                 # Verify the API was called with dsa_beneficiary in fields
                 mock_api.assert_called_once()
                 call_args = mock_api.call_args
-                assert "dsa_beneficiary" in str(call_args)
+                params = call_args[0][2]
+                assert "dsa_beneficiary" in params.get("fields", "")
     
     @pytest.mark.asyncio
     async def test_get_adset_details_error_handling(self):
