@@ -84,17 +84,18 @@ class TestDSABeneficiaryDetection:
             with patch('meta_ads_mcp.core.auth.get_current_access_token', new_callable=AsyncMock) as mock_auth:
                 mock_auth.return_value = "test_access_token"
                 mock_api.side_effect = Exception("API Error")
-                
+
                 result = await get_account_info(account_id="act_invalid")
-                
+
                 # Handle new return format (dictionary instead of JSON string)
                 if isinstance(result, dict):
                     result_data = result
                 else:
                     result_data = json.loads(result)
-                
-                # Verify error is properly handled
+
+                # Anchor test: verify the SPECIFIC error message is preserved (not just "error" exists)
                 assert "error" in result_data
+                assert "API Error" in str(result_data.get("error", {}))
     
     @pytest.mark.asyncio
     async def test_account_info_requires_account_id(self):
