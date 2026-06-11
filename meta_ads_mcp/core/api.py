@@ -6,6 +6,7 @@ import httpx
 import asyncio
 import functools
 import os
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from . import auth
 from .auth import needs_authentication, auth_manager, start_callback_server, shutdown_callback_server
 from .utils import logger
@@ -20,6 +21,17 @@ USER_AGENT = "meta-ads-mcp/1.0"
 logger.info("Core API module initialized")
 logger.info(f"Graph API Version: {META_GRAPH_API_VERSION}")
 logger.info(f"META_APP_ID env var present: {'Yes' if os.environ.get('META_APP_ID') else 'No'}")
+
+
+def redact_access_token_from_url(url: str) -> str:
+    """Remove access_token parameter from URL to prevent token leakage."""
+    parsed = urlparse(url)
+    params = parse_qs(parsed.query, keep_blank_values=True)
+    # Remove access_token and similar sensitive params
+    for sensitive_param in ['access_token', 'token', 'api_key', 'key']:
+        params.pop(sensitive_param, None)
+    new_query = urlencode(params, doseq=True)
+    return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
 
 class GraphAPIError(Exception):
     """Exception raised for errors from the Graph API."""
@@ -188,10 +200,10 @@ async def make_api_request(
             full_response = {
                 "headers": dict(e.response.headers),
                 "status_code": e.response.status_code,
-                "url": str(e.response.url),
+                "url": redact_access_token_from_url(str(e.response.url)),
                 "reason": getattr(e.response, "reason_phrase", "Unknown reason"),
                 "request_method": e.request.method,
-                "request_url": str(e.request.url)
+                "request_url": redact_access_token_from_url(str(e.request.url))
             }
 
             return {
