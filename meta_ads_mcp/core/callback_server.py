@@ -33,11 +33,9 @@ class CallbackHandler(BaseHTTPRequestHandler):
         try:
             # Print path for debugging
             print(f"Callback server received request: {self.path}")
-            
+
             if self.path.startswith("/callback"):
                 self._handle_oauth_callback()
-            elif self.path.startswith("/token"):
-                self._handle_token()
             else:
                 # If no matching path, return a 404 error
                 self.send_response(404)
@@ -119,27 +117,7 @@ class CallbackHandler(BaseHTTPRequestHandler):
             logger.warning("OAuth callback received without code or error")
         
         self.wfile.write(html.encode())
-    
-    def _handle_token(self):
-        """Handle token endpoint for retrieving stored token data"""
-        # This endpoint allows other parts of the application to retrieve
-        # token information from the callback server
-        
-        self.send_response(200)
-        self.send_header("Content-type", "application/json")
-        self.end_headers()
-        
-        # Return current token container contents
-        response_data = {
-            "status": "success",
-            "data": token_container
-        }
-        
-        self.wfile.write(json.dumps(response_data).encode())
-        
-        # The actual token processing is now handled by the auth module
-        # that imports this module and accesses token_container
-    
+
     # Silence server logs
     def log_message(self, format, *args):
         return
