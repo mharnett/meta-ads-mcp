@@ -281,7 +281,7 @@ class AuthManager:
     def invalidate_token(self) -> None:
         """Invalidate the current token, usually because it has expired or is invalid"""
         if self.token_info:
-            logger.info(f"Invalidating token: {self.token_info.access_token[:10]}...")
+            logger.info("Invalidating token: [TOKEN PRESENT]")
             self.token_info = None
             
             # Signal that authentication is needed
@@ -458,7 +458,7 @@ async def get_current_access_token() -> Optional[str]:
                 auth_manager.invalidate_token()
                 return None
                 
-            logger.debug(f"Access token found in auth_manager (starts with: {token[:10]}...)")
+            logger.debug("Access token found in auth_manager: [TOKEN PRESENT]")
             return token
         else:
             logger.warning("No valid access token available in auth_manager")

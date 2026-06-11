@@ -76,7 +76,7 @@ class CallbackHandler(BaseHTTPRequestHandler):
             logger.error(f"OAuth authorization failed: {error}")
         elif code:
             # Success case - we have the authorization code
-            logger.info(f"Received authorization code: {code[:10]}...")
+            logger.info("Received authorization code: [CODE PRESENT]")
             
             # Store the authorization code temporarily
             # The auth module will exchange this for an access token

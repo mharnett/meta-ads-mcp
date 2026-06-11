@@ -188,7 +188,7 @@ class AuthInjectionMiddleware(BaseHTTPMiddleware):
         auth_token = FastMCPAuthIntegration.extract_token_from_headers(dict(request.headers))
 
         if auth_token:
-            logger.debug(f"HTTP Auth Middleware: Extracted auth token: {auth_token[:10]}...")
+            logger.debug("HTTP Auth Middleware: Extracted auth token: [TOKEN PRESENT]")
             logger.debug("Injecting auth token into request context")
             FastMCPAuthIntegration.set_auth_token(auth_token)
         else:

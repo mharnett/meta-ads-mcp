@@ -57,7 +57,7 @@ async def get_login_link(access_token: Optional[str] = None) -> str:
         return json.dumps({
             "message": "Already Authenticated",
             "status": "You're successfully authenticated with Meta Ads!",
-            "token_info": f"Token preview: {cached_token[:10]}...",
+            "token_info": "[TOKEN PRESENT]",
             "created_at": auth_manager.token_info.created_at if hasattr(auth_manager, "token_info") and auth_manager.token_info else None,
             "expires_in": auth_manager.token_info.expires_in if hasattr(auth_manager, "token_info") and auth_manager.token_info else None,
             "authentication_method": "meta_oauth",
