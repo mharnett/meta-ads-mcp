@@ -207,11 +207,13 @@ class AuthManager:
         """Save token to cache file"""
         if not self.token_info:
             return
-        
+
         cache_path = self._get_token_cache_path()
-        
+
         try:
-            with open(cache_path, "w") as f:
+            # Use os.open with 0o600 (owner read/write only) to prevent world-readable secrets
+            flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+            with os.fdopen(os.open(cache_path, flags, 0o600), "w") as f:
                 json.dump(self.token_info.serialize(), f)
             logger.info(f"Token cached at: {cache_path}")
         except Exception as e:
