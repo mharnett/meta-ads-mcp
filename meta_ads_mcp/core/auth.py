@@ -47,12 +47,15 @@ class MetaConfig:
         return cls._instance
     
     def set_app_id(self, app_id):
-        """Set the Meta App ID for API calls"""
+        """Set the Meta App ID for API calls.
+
+        Stores the value on this singleton instance only. We deliberately do NOT
+        mutate os.environ["META_APP_ID"] here: using process-global env as an
+        inter-module bus made the dependency implicit and leaked state across tests.
+        Other modules read the app_id via meta_config.get_app_id(), not the env var.
+        """
         logger.info(f"Setting Meta App ID: {app_id}")
         self.app_id = app_id
-        # Also update environment variable for modules that might read directly from it
-        os.environ["META_APP_ID"] = app_id
-        logger.debug(f"Updated META_APP_ID environment variable: {os.environ.get('META_APP_ID')}")
     
     def get_app_id(self):
         """Get the current Meta App ID"""
@@ -302,62 +305,56 @@ class AuthManager:
         self.invalidate_token()
 
 
-def process_token_response(token_container):
-    """Process the token response from Facebook."""
-    global needs_authentication, auth_manager
-    
-    if token_container and token_container.get('token'):
-        logger.info("Processing token response from Facebook OAuth")
-        
-        # Exchange the short-lived token for a long-lived token
-        short_lived_token = token_container['token']
-        long_lived_token_info = exchange_token_for_long_lived(short_lived_token)
-        
-        if long_lived_token_info:
-            logger.info(f"Successfully exchanged for long-lived token (expires in {long_lived_token_info.expires_in} seconds)")
-            
-            try:
-                auth_manager.token_info = long_lived_token_info
-                logger.info(f"Long-lived token info set in auth_manager, expires in {long_lived_token_info.expires_in} seconds")
-            except NameError:
-                logger.error("auth_manager not defined when trying to process token")
-                
-            try:
-                logger.info("Attempting to save long-lived token to cache")
-                auth_manager._save_token_to_cache()
-                logger.info(f"Long-lived token successfully saved to cache at {auth_manager._get_token_cache_path()}")
-            except Exception as e:
-                logger.error(f"Error saving token to cache: {e}")
-                
-            needs_authentication = False
-            return True
-        else:
-            # Fall back to the short-lived token if exchange fails
-            logger.warning("Failed to exchange for long-lived token, using short-lived token instead")
-            token_info = TokenInfo(
-                access_token=short_lived_token,
-                expires_in=token_container.get('expires_in', 0)
-            )
-            
-            try:
-                auth_manager.token_info = token_info
-                logger.info(f"Short-lived token info set in auth_manager, expires in {token_info.expires_in} seconds")
-            except NameError:
-                logger.error("auth_manager not defined when trying to process token")
-                
-            try:
-                logger.info("Attempting to save token to cache")
-                auth_manager._save_token_to_cache()
-                logger.info(f"Token successfully saved to cache at {auth_manager._get_token_cache_path()}")
-            except Exception as e:
-                logger.error(f"Error saving token to cache: {e}")
-                
-            needs_authentication = False
-            return True
-    else:
+def process_token_response(token_container, auth_manager=None):
+    """Process the token response from Facebook.
+
+    Args:
+        token_container: dict with the OAuth token (and optional expires_in).
+        auth_manager: the AuthManager to store the token on. Passed explicitly so the
+            dependency is visible and testable. Defaults to the module singleton for
+            backward compatibility with the callback-server call site — but callers
+            SHOULD pass it. This replaces the old `global auth_manager` +
+            `except NameError` pattern, which relied on the name happening to be
+            defined by import order.
+
+    Returns:
+        True if a token was stored, False if the container was empty.
+    """
+    global needs_authentication
+    if auth_manager is None:
+        auth_manager = globals()["auth_manager"]
+
+    if not (token_container and token_container.get('token')):
         logger.warning("Received empty token in process_token_response")
         needs_authentication = True
         return False
+
+    logger.info("Processing token response from Facebook OAuth")
+
+    short_lived_token = token_container['token']
+    long_lived_token_info = exchange_token_for_long_lived(short_lived_token)
+
+    if long_lived_token_info:
+        logger.info(f"Successfully exchanged for long-lived token (expires in {long_lived_token_info.expires_in} seconds)")
+        token_info = long_lived_token_info
+    else:
+        logger.warning("Failed to exchange for long-lived token, using short-lived token instead")
+        token_info = TokenInfo(
+            access_token=short_lived_token,
+            expires_in=token_container.get('expires_in', 0),
+        )
+
+    auth_manager.token_info = token_info
+    logger.info(f"Token info set in auth_manager, expires in {token_info.expires_in} seconds")
+
+    try:
+        auth_manager._save_token_to_cache()
+        logger.info(f"Token saved to cache at {auth_manager._get_token_cache_path()}")
+    except Exception as e:
+        logger.error(f"Error saving token to cache: {e}")
+
+    needs_authentication = False
+    return True
 
 
 def exchange_token_for_long_lived(short_lived_token):
