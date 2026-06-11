@@ -8,19 +8,55 @@ The tools expose Meta Ads data (accounts, campaigns, ads, etc.) as searchable
 and fetchable records for ChatGPT Deep Research analysis.
 """
 
+import asyncio
 import json
 import re
+from collections import OrderedDict
 from typing import List, Dict, Any, Optional
 from .api import meta_api_tool, make_api_request
 from .server import mcp_server
 from .utils import logger
 
 
+# Cap concurrent outbound Meta API calls when fanning out across accounts.
+# Prevents N+1 serial latency while staying well under Meta's rate limits.
+MAX_CONCURRENT_REQUESTS = 8
+
+# Upper bound on cached search records. Older entries are evicted (LRU) so a
+# long-lived process serving many searches cannot grow memory without bound.
+CACHE_MAX_SIZE = 200
+
+
+class _BoundedLRUCache(OrderedDict):
+    """An OrderedDict that evicts the least-recently-used item past a max size.
+
+    Behaves like a dict for the call sites in this module ([]= set, .get()).
+    Reads and writes mark the key most-recently-used.
+    """
+
+    def __init__(self, maxsize: int):
+        super().__init__()
+        self._maxsize = maxsize
+
+    def __setitem__(self, key, value):
+        if key in self:
+            self.move_to_end(key)
+        super().__setitem__(key, value)
+        while len(self) > self._maxsize:
+            self.popitem(last=False)  # evict oldest
+
+    def get(self, key, default=None):
+        if key in self:
+            self.move_to_end(key)
+            return self[key]
+        return default
+
+
 class MetaAdsDataManager:
     """Manages Meta Ads data for OpenAI MCP search and fetch operations"""
-    
+
     def __init__(self):
-        self._cache = {}
+        self._cache = _BoundedLRUCache(CACHE_MAX_SIZE)
         logger.debug("MetaAdsDataManager initialized")
     
     async def _get_ad_accounts(self, access_token: str, limit: int = 200) -> List[Dict[str, Any]]:
@@ -142,13 +178,17 @@ class MetaAdsDataManager:
         try:
             # Search ad accounts
             accounts = await self._get_ad_accounts(access_token, limit=200)
+
+            # First pass: identify matching accounts and cache them.
+            matching_accounts = []
             for account in accounts:
                 account_text = f"{account.get('name', '')} {account.get('id', '')} {account.get('account_status', '')} {account.get('business_city', '')} {account.get('business_country_code', '')}".lower()
-                
+
                 if any(term in account_text for term in query_terms):
                     record_id = f"account:{account['id']}"
                     matching_ids.append(record_id)
-                    
+                    matching_accounts.append(account)
+
                     # Cache the account data
                     self._cache[record_id] = {
                         "id": record_id,
@@ -165,10 +205,25 @@ class MetaAdsDataManager:
                         },
                         "raw_data": account
                     }
-                    
-                    # Also search campaigns for this account if it matches
-                    campaigns = await self._get_campaigns(access_token, account['id'], limit=10)
-                    for campaign in campaigns:
+
+            # Second pass: fetch campaigns for all matching accounts concurrently,
+            # bounded by a semaphore, instead of issuing N serial API calls.
+            semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+
+            async def _bounded_get_campaigns(acct_id):
+                async with semaphore:
+                    return await self._get_campaigns(access_token, acct_id, limit=10)
+
+            campaign_results = await asyncio.gather(
+                *[_bounded_get_campaigns(acct['id']) for acct in matching_accounts],
+                return_exceptions=True,
+            )
+
+            for account, campaigns in zip(matching_accounts, campaign_results):
+                if isinstance(campaigns, Exception):
+                    logger.error(f"Error fetching campaigns for {account.get('id')}: {campaigns}")
+                    continue
+                for campaign in campaigns:
                         campaign_text = f"{campaign.get('name', '')} {campaign.get('objective', '')} {campaign.get('status', '')}".lower()
                         
                         if any(term in campaign_text for term in query_terms):
