@@ -47,8 +47,11 @@ class MetaConfig:
         if cls._instance is None:
             logger.debug("Creating new MetaConfig instance")
             cls._instance = super(MetaConfig, cls).__new__(cls)
-            cls._instance.app_id = os.environ.get("META_APP_ID", "779761636818489")
-            logger.info(f"MetaConfig initialized with app_id from env/default: {cls._instance.app_id}")
+            cls._instance.app_id = os.environ.get("META_APP_ID")
+            if cls._instance.app_id:
+                logger.info(f"MetaConfig initialized with app_id from env: {cls._instance.app_id}")
+            else:
+                logger.warning("META_APP_ID not set in environment — OAuth flow will fail")
         return cls._instance
     
     def set_app_id(self, app_id):
@@ -634,8 +637,8 @@ def login():
         logger.info(f"Direct authentication URL: {auth_manager.get_auth_url()}")
         logger.info("You can manually open this URL in your browser to complete authentication.")
 
-# Initialize auth manager with a placeholder - will be updated at runtime
-META_APP_ID = os.environ.get("META_APP_ID", "YOUR_META_APP_ID")
+# Initialize auth manager — will use env var or configured value at runtime
+META_APP_ID = os.environ.get("META_APP_ID") or ""
 
 # Create the auth manager
 auth_manager = AuthManager(META_APP_ID) 
