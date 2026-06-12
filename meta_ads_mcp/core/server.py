@@ -189,8 +189,7 @@ def login_cli():
     Command-line function to authenticate with Meta
     """
     logger.info("Starting Meta Ads CLI authentication flow")
-    print("Starting Meta Ads CLI authentication flow...")
-    
+
     # Call the common login function
     login_auth()
 
@@ -228,7 +227,6 @@ def main():
     # Validate CLI argument combinations
     if args.transport == "stdio" and (args.port != 8080 or args.host != "localhost" or args.sse_response):
         logger.warning("HTTP transport arguments (--port, --host, --sse-response) are ignored when using stdio transport")
-        print("Warning: HTTP transport arguments are ignored when using stdio transport")
     
     # Update app ID if provided as environment variable or command line arg
     from .auth import auth_manager, meta_config
@@ -258,8 +256,7 @@ def main():
     # Show version if requested
     if args.version:
         from meta_ads_mcp import __version__
-        logger.info(f"Displaying version: {__version__}")
-        print(f"Meta Ads MCP v{__version__}")
+        logger.info(f"Meta Ads MCP v{__version__}")
         return 0
     
     # Handle login command
@@ -283,14 +280,8 @@ def main():
         logger.info(f"Starting MCP server with Streamable HTTP transport on {args.host}:{args.port}")
         logger.info("Mode: Stateless (no session persistence)")
         logger.info(f"Response format: {'SSE' if args.sse_response else 'JSON'}")
-        logger.info("Primary auth method: Bearer Token (recommended)")
-        logger.info("Fallback auth method: Custom Meta App OAuth (complex setup)")
-        
-        print(f"Starting Meta Ads MCP server with Streamable HTTP transport")
-        print(f"Server will listen on {args.host}:{args.port}")
-        print(f"Response format: {'SSE' if args.sse_response else 'JSON'}")
-        print("Primary authentication: Bearer Token (via Authorization: Bearer <token> header)")
-        print("Fallback authentication: Custom Meta App OAuth (via X-META-APP-ID header)")
+        logger.info("Primary auth method: Bearer Token (via Authorization: Bearer <token> header)")
+        logger.info("Fallback auth method: Custom Meta App OAuth (via X-META-APP-ID header)")
         
         # Configure the existing server with streamable HTTP settings
         mcp_server.settings.host = args.host
@@ -307,18 +298,16 @@ def main():
         logger.info("Setting up HTTP authentication middleware")
         try:
             from .http_auth_integration import setup_fastmcp_http_auth
-            
+
             # Setup the FastMCP HTTP auth integration
             setup_fastmcp_http_auth(mcp_server)
             logger.info("FastMCP HTTP authentication integration setup successful")
-            print("✅ FastMCP HTTP authentication integration enabled")
-            print("   - Bearer tokens via Authorization: Bearer <token> header")
-            print("   - Direct Meta tokens via X-META-ACCESS-TOKEN header")
-            
+            logger.info("Bearer tokens via Authorization: Bearer <token> header")
+            logger.info("Direct Meta tokens via X-META-ACCESS-TOKEN header")
+
         except Exception as e:
             logger.error(f"Failed to setup FastMCP HTTP authentication integration: {e}")
-            print(f"⚠️  FastMCP HTTP authentication integration setup failed: {e}")
-            print("   Server will still start but may not support header-based auth")
+            logger.warning("Server will still start but may not support header-based auth")
         
         # Log final server configuration
         logger.info(f"FastMCP server configured with:")
@@ -333,19 +322,17 @@ def main():
         # decorators). See write_gate.install_write_gate for details.
         install_write_gate(mcp_server, logger)
         write_status = "ENABLED" if is_write_enabled() else "DISABLED (read-only)"
-        print(f"   Write mode: {write_status}  (META_ADS_MCP_WRITE)")
+        logger.info(f"Write mode: {write_status}  (META_ADS_MCP_WRITE)")
 
         # Start the FastMCP server with Streamable HTTP transport
         try:
             logger.info("Starting FastMCP server with Streamable HTTP transport")
-            print(f"✅ Server configured successfully")
-            print(f"   URL: http://{args.host}:{args.port}{mcp_server.settings.streamable_http_path}/")
-            print(f"   Mode: {'Stateless' if mcp_server.settings.stateless_http else 'Stateful'}")
-            print(f"   Format: {'JSON' if mcp_server.settings.json_response else 'SSE'}")
+            logger.info(f"Server URL: http://{args.host}:{args.port}{mcp_server.settings.streamable_http_path}/")
+            logger.info(f"Mode: {'Stateless' if mcp_server.settings.stateless_http else 'Stateful'}")
+            logger.info(f"Format: {'JSON' if mcp_server.settings.json_response else 'SSE'}")
             mcp_server.run(transport="streamable-http")
         except Exception as e:
             logger.error(f"Error starting Streamable HTTP server: {e}")
-            print(f"Error: Failed to start Streamable HTTP server: {e}")
             return 1
     else:
         # Default stdio transport

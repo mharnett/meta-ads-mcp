@@ -591,48 +591,48 @@ def login():
     """
     Start the login flow to authenticate with Meta
     """
-    print("Starting Meta Ads authentication flow...")
-    
+    logger.info("Starting Meta Ads authentication flow...")
+
     try:
         # Start the callback server first
         try:
             port = start_callback_server()
         except Exception as callback_error:
-            print(f"Error: {callback_error}")
-            print("Callback server is disabled. Please use an alternative authentication method:")
-            print("- Set META_ACCESS_TOKEN environment variable with a Meta System User token")
+            logger.error(f"Callback server error: {callback_error}")
+            logger.info("Callback server is disabled. Please use an alternative authentication method:")
+            logger.info("- Set META_ACCESS_TOKEN environment variable with a Meta System User token")
             return
-        
+
         # Get the auth URL and open the browser
         auth_url = auth_manager.get_auth_url()
-        print(f"Opening browser with URL: {auth_url}")
+        logger.info(f"Opening browser with URL: {auth_url}")
         webbrowser.open(auth_url)
-        
+
         # Wait for token to be received
-        print("Waiting for authentication to complete...")
+        logger.info("Waiting for authentication to complete...")
         max_wait = 300  # 5 minutes
         wait_interval = 2  # 2 seconds
-        
+
         for _ in range(max_wait // wait_interval):
             if token_container["token"]:
                 token = token_container["token"]
-                print("Authentication successful!")
+                logger.info("Authentication successful!")
                 # Verify token works by getting basic user info
                 try:
                     from .api import make_api_request
                     result = asyncio.run(make_api_request("me", token, {}))
-                    print(f"Authenticated as: {result.get('name', 'Unknown')} (ID: {result.get('id', 'Unknown')})")
+                    logger.info(f"Authenticated as: {result.get('name', 'Unknown')} (ID: {result.get('id', 'Unknown')})")
                     return
                 except Exception as e:
-                    print(f"Warning: Could not verify token: {e}")
+                    logger.warning(f"Could not verify token: {e}")
                     return
             time.sleep(wait_interval)
-        
-        print("Authentication timed out. Please try again.")
+
+        logger.warning("Authentication timed out. Please try again.")
     except Exception as e:
-        print(f"Error during authentication: {e}")
-        print(f"Direct authentication URL: {auth_manager.get_auth_url()}")
-        print("You can manually open this URL in your browser to complete authentication.")
+        logger.error(f"Error during authentication: {e}")
+        logger.info(f"Direct authentication URL: {auth_manager.get_auth_url()}")
+        logger.info("You can manually open this URL in your browser to complete authentication.")
 
 # Initialize auth manager with a placeholder - will be updated at runtime
 META_APP_ID = os.environ.get("META_APP_ID", "YOUR_META_APP_ID")

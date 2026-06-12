@@ -74,8 +74,7 @@ CALLBACK_SERVER_TIMEOUT = 180  # 3 minutes timeout
 class CallbackHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
-            # Print path for debugging
-            print(f"Callback server received request: {self.path}")
+            logger.debug(f"Callback server received request: {self.path}")
 
             if self.path.startswith("/callback"):
                 self._handle_oauth_callback()
@@ -84,7 +83,7 @@ class CallbackHandler(BaseHTTPRequestHandler):
                 self.send_response(404)
                 self.end_headers()
         except Exception as e:
-            print(f"Error processing request: {e}")
+            logger.error(f"Error processing request: {e}")
             self.send_response(500)
             self.end_headers()
     
@@ -175,29 +174,29 @@ def shutdown_callback_server():
     Shutdown the callback server if it's running
     """
     global callback_server_thread, callback_server_running, callback_server_port, callback_server_instance, server_shutdown_timer
-    
+
     with callback_server_lock:
         if not callback_server_running:
-            print("Callback server is not running")
+            logger.debug("Callback server is not running")
             return
-        
+
         if server_shutdown_timer is not None:
             server_shutdown_timer.cancel()
             server_shutdown_timer = None
-        
+
         try:
             if callback_server_instance:
-                print("Shutting down callback server...")
+                logger.info("Shutting down callback server...")
                 callback_server_instance.shutdown()
                 callback_server_instance.server_close()
-                print("Callback server shut down successfully")
-            
+                logger.info("Callback server shut down successfully")
+
             if callback_server_thread and callback_server_thread.is_alive():
                 callback_server_thread.join(timeout=5)
                 if callback_server_thread.is_alive():
-                    print("Warning: Callback server thread did not shut down cleanly")
+                    logger.warning("Callback server thread did not shut down cleanly")
         except Exception as e:
-            print(f"Error during callback server shutdown: {e}")
+            logger.error(f"Error during callback server shutdown: {e}")
         finally:
             callback_server_running = False
             callback_server_thread = None
@@ -223,7 +222,7 @@ def start_callback_server() -> int:
     
     with callback_server_lock:
         if callback_server_running:
-            print(f"Callback server already running on port {callback_server_port}")
+            logger.info(f"Callback server already running on port {callback_server_port}")
             return callback_server_port
         
         # Find an available port
@@ -255,28 +254,28 @@ def start_callback_server() -> int:
         
         # Set up automatic shutdown timer
         def auto_shutdown():
-            print(f"Callback server auto-shutdown after {CALLBACK_SERVER_TIMEOUT} seconds")
+            logger.info(f"Callback server auto-shutdown after {CALLBACK_SERVER_TIMEOUT} seconds")
             shutdown_callback_server()
-        
+
         server_shutdown_timer = threading.Timer(CALLBACK_SERVER_TIMEOUT, auto_shutdown)
         server_shutdown_timer.start()
-        
-        print(f"Callback server started on http://localhost:{port}")
+
+        logger.info(f"Callback server started on http://localhost:{port}")
         return port
 
 
 def server_thread():
     """Thread function to run the callback server"""
     global callback_server_running, callback_server_instance
-    
+
     try:
         callback_server_instance = HTTPServer(('localhost', callback_server_port), CallbackHandler)
         callback_server_running = True
-        print(f"Callback server thread started on port {callback_server_port}")
+        logger.debug(f"Callback server thread started on port {callback_server_port}")
         callback_server_instance.serve_forever()
     except Exception as e:
-        print(f"Callback server error: {e}")
+        logger.error(f"Callback server error: {e}")
         callback_server_running = False
     finally:
-        print("Callback server thread finished")
+        logger.debug("Callback server thread finished")
         callback_server_running = False 
