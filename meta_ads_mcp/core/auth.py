@@ -339,6 +339,31 @@ def process_token_response(token_container, auth_manager=None):
     if auth_manager is None:
         auth_manager = globals()["auth_manager"]
 
+    # Authorization-code flow (H6): the callback stores an `auth_code` that must
+    # be exchanged server-side for an access token. Prefer this path when a code
+    # is present; fall back to the legacy implicit-flow direct token otherwise.
+    if token_container and token_container.get('auth_code'):
+        logger.info("Processing authorization code from Meta OAuth callback")
+        code = token_container['auth_code']
+        redirect_uri = token_container.get('redirect_uri', AUTH_REDIRECT_URI)
+        token_info = exchange_authorization_code_for_token(code, redirect_uri)
+
+        if not token_info:
+            logger.error("Authorization code exchange failed; no token stored")
+            needs_authentication = True
+            return False
+
+        auth_manager.token_info = token_info
+        logger.info(f"Token info set in auth_manager, expires in {token_info.expires_in} seconds")
+        try:
+            auth_manager._save_token_to_cache()
+            logger.info(f"Token saved to cache at {auth_manager._get_token_cache_path()}")
+        except Exception as e:
+            logger.error(f"Error saving token to cache: {e}")
+
+        needs_authentication = False
+        return True
+
     if not (token_container and token_container.get('token')):
         logger.warning("Received empty token in process_token_response")
         needs_authentication = True
@@ -430,6 +455,66 @@ def exchange_token_for_long_lived(short_lived_token):
             return None
     except Exception as e:
         logger.error(f"Error exchanging token: {e}")
+        return None
+
+
+def exchange_authorization_code_for_token(code, redirect_uri):
+    """Exchange an OAuth authorization code for an access token.
+
+    This is the server-side step of the authorization-code flow (response_type=
+    code). The code returned to the redirect URI is exchanged — using the app
+    secret — for an access token. The token is never exposed in the browser URL.
+
+    Args:
+        code: The authorization code from the OAuth callback.
+        redirect_uri: The redirect URI used in the authorize request. Meta
+            requires this to match the original request exactly.
+
+    Returns:
+        TokenInfo with the access token, or None if the exchange failed.
+    """
+    logger.info("Exchanging authorization code for access token")
+
+    try:
+        app_id = meta_config.get_app_id()
+        app_secret = os.environ.get("META_APP_SECRET", "")
+
+        if not app_id or not app_secret:
+            logger.error("Missing app_id or app_secret for authorization code exchange")
+            return None
+
+        url = "https://graph.instagram.com/v24.0/oauth/access_token"
+        params = {
+            "client_id": app_id,
+            "client_secret": app_secret,
+            "redirect_uri": redirect_uri,
+            "code": code,
+            "grant_type": "authorization_code",
+        }
+
+        logger.debug(f"Making authorization code exchange request to {url}")
+        response = requests.post(url, data=params)
+
+        if response.status_code == 200:
+            data = response.json()
+            access_token = data.get("access_token")
+            expires_in = data.get("expires_in")
+
+            if access_token:
+                logger.info(
+                    f"Received access token from code exchange, expires in {expires_in} seconds"
+                )
+                return TokenInfo(access_token=access_token, expires_in=expires_in)
+            else:
+                logger.error("No access_token in authorization code exchange response")
+                return None
+        else:
+            logger.error(
+                f"Authorization code exchange failed with status {response.status_code}: {response.text}"
+            )
+            return None
+    except Exception as e:
+        logger.error(f"Error exchanging authorization code: {e}")
         return None
 
 
