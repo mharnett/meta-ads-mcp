@@ -2,7 +2,7 @@
 
 import json
 from typing import List, Optional, Dict, Any, Union
-from .api import meta_api_tool, make_api_request
+from .api import meta_api_tool, make_api_request, ensure_act_prefix
 from .accounts import get_ad_accounts
 from .server import mcp_server
 
@@ -21,10 +21,10 @@ async def get_campaigns(
     Get campaigns for a Meta Ads account with optional filtering.
     
     Note: By default, the Meta API returns a subset of available fields. 
-    Other fields like 'effective_status', 'special_ad_categories', 
-    'lifetime_budget', 'spend_cap', 'budget_remaining', 'promoted_object', 
-    'source_campaign_id', etc., might be available but require specifying them
-    in the API call (currently not exposed by this tool's parameters).
+    Other fields like 'effective_status', 'spend_cap', 'budget_remaining',
+    'promoted_object', 'source_campaign_id', etc., might be available but
+    require specifying them in the API call (currently not exposed by this
+    tool's parameters).
     
     Args:
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
@@ -43,10 +43,11 @@ async def get_campaigns(
     # Require explicit account_id
     if not account_id:
         return json.dumps({"error": "No account ID specified"}, indent=2)
-    
+
+    account_id = ensure_act_prefix(account_id)
     endpoint = f"{account_id}/campaigns"
     params = {
-        "fields": "id,name,objective,status,daily_budget,lifetime_budget,buying_type,start_time,stop_time,created_time,updated_time,bid_strategy",
+        "fields": "id,name,objective,status,daily_budget,lifetime_budget,buying_type,start_time,stop_time,created_time,updated_time,bid_strategy,special_ad_categories",
         "limit": limit
     }
     
@@ -123,7 +124,7 @@ async def create_campaign(
     daily_budget: Optional[int] = None,
     lifetime_budget: Optional[int] = None,
     buying_type: Optional[str] = None,
-    bid_strategy: Optional[str] = None,
+    bid_strategy: str = "LOWEST_COST_WITHOUT_CAP",
     bid_cap: Optional[int] = None,
     spend_cap: Optional[int] = None,
     campaign_budget_optimization: Optional[bool] = None,
@@ -132,7 +133,9 @@ async def create_campaign(
 ) -> str:
     """
     Create a new campaign in a Meta Ads account.
-    
+
+    Note: Campaigns do not support start_time for scheduling — set start_time on the ad set instead.
+
     Args:
         account_id: Meta Ads account ID (format: act_XXXXXXXXX)
         name: Campaign name
@@ -149,7 +152,7 @@ async def create_campaign(
         daily_budget: Daily budget in account currency (in cents) as a string (only used if use_adset_level_budgets=False)
         lifetime_budget: Lifetime budget in account currency (in cents) as a string (only used if use_adset_level_budgets=False)
         buying_type: Buying type (e.g., 'AUCTION')
-        bid_strategy: Bid strategy. Must be one of: 'LOWEST_COST_WITHOUT_CAP', 'LOWEST_COST_WITH_BID_CAP', 'COST_CAP', 'LOWEST_COST_WITH_MIN_ROAS'.
+        bid_strategy: Bid strategy (default: LOWEST_COST_WITHOUT_CAP). Must be one of: 'LOWEST_COST_WITHOUT_CAP', 'LOWEST_COST_WITH_BID_CAP', 'COST_CAP', 'LOWEST_COST_WITH_MIN_ROAS'. WARNING: If you use LOWEST_COST_WITH_BID_CAP or COST_CAP, all child ad sets will require bid_amount to be set.
         bid_cap: Bid cap in account currency (in cents) as a string
         spend_cap: Spending limit for the campaign in account currency (in cents) as a string
         campaign_budget_optimization: Whether to enable campaign budget optimization (only used if use_adset_level_budgets=False)
@@ -165,10 +168,26 @@ async def create_campaign(
         
     if not objective:
         return json.dumps({"error": "No campaign objective provided"}, indent=2)
+
+    account_id = ensure_act_prefix(account_id)
+
+    # Track whether the user explicitly provided special_ad_categories
+    _user_provided_categories = special_ad_categories is not None
     
     # Special_ad_categories is required by the API, set default if not provided
     if special_ad_categories is None:
         special_ad_categories = []
+    
+    # Only warn if user omitted special_ad_categories entirely.
+    # If they explicitly passed [] they are saying none are needed.
+    compliance_warning = None
+    if objective == "OUTCOME_LEADS" and not special_ad_categories and not _user_provided_categories:
+        compliance_warning = (
+            "Warning: Campaign objective is OUTCOME_LEADS but no special_ad_categories were specified. "
+            "If this campaign is for a regulated industry (insurance, housing, employment, credit), "
+            "you must set special_ad_categories (e.g., FINANCIAL_PRODUCTS_SERVICES, HOUSING, EMPLOYMENT, CREDIT) "
+            "to comply with Meta advertising policies. Ads without the correct category may be rejected."
+        )
     
     # For this example, we'll add a fixed daily budget if none is provided and we're not using ad set level budgets
     if not daily_budget and not lifetime_budget and not use_adset_level_budgets:
@@ -188,18 +207,21 @@ async def create_campaign(
         # Convert budget values to strings if they aren't already
         if daily_budget is not None:
             params["daily_budget"] = str(daily_budget)
-        
+
         if lifetime_budget is not None:
             params["lifetime_budget"] = str(lifetime_budget)
-        
+
         if campaign_budget_optimization is not None:
             params["campaign_budget_optimization"] = "true" if campaign_budget_optimization else "false"
-    
+    else:
+        # Meta API v24 requires is_adset_budget_sharing_enabled when not using campaign budget
+        params["is_adset_budget_sharing_enabled"] = "false"
+
     # Add new parameters
     if buying_type:
         params["buying_type"] = buying_type
     
-    if bid_strategy:
+    if bid_strategy and not use_adset_level_budgets:
         params["bid_strategy"] = bid_strategy
     
     if bid_cap is not None:
@@ -218,6 +240,9 @@ async def create_campaign(
         if use_adset_level_budgets:
             data["budget_strategy"] = "ad_set_level"
             data["note"] = "Campaign created with ad set level budgets. Set budgets when creating ad sets within this campaign."
+        
+        if compliance_warning:
+            data["compliance_warning"] = compliance_warning
         
         return json.dumps(data, indent=2)
     except Exception as e:
@@ -248,6 +273,8 @@ async def update_campaign(
 ) -> str:
     """
     Update an existing campaign in a Meta Ads account.
+
+    Note: Campaigns do not support start_time for scheduling — set start_time on the ad set instead.
 
     Args:
         campaign_id: Meta Ads campaign ID

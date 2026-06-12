@@ -13,7 +13,7 @@ import json
 import re
 from collections import OrderedDict
 from typing import List, Dict, Any, Optional
-from .api import meta_api_tool, make_api_request
+from .api import meta_api_tool, make_api_request, ensure_act_prefix
 from .server import mcp_server
 from .utils import logger
 
@@ -119,9 +119,7 @@ class MetaAdsDataManager:
             # Import the page discovery function from ads module
             from .ads import _discover_pages_for_account
             
-            # Ensure account_id has the 'act_' prefix
-            if not account_id.startswith("act_"):
-                account_id = f"act_{account_id}"
+            account_id = ensure_act_prefix(account_id)
             
             page_discovery_result = await _discover_pages_for_account(account_id, access_token)
             
@@ -423,20 +421,27 @@ async def fetch(
     id: str
 ) -> str:
     """
-    Fetch complete record data by ID.
-    It retrieves the full data for a specific record identified by its ID.
-    
+    Fetch a record previously returned by the 'search' tool in the same session.
+
+    IMPORTANT LIMITATIONS:
+    - This tool ONLY returns records that were cached by a prior 'search' call.
+      It does NOT make direct API calls to Meta. If the record was not found by
+      'search' first, this tool will return "Record not found".
+    - Do NOT use this tool to look up campaigns, adsets, or ads by ID directly.
+
+    For direct lookups by ID, use these tools instead:
+    - get_campaign_details(campaign_id=...) - for campaigns
+    - get_adset_details(adset_id=...) - for ad sets
+    - get_ads(account_id=..., campaign_id=...) - for ads
+    - get_adsets(account_id=..., campaign_id=...) - for ad sets in a campaign
+
     Args:
-        id: The record ID to fetch (format: "type:id", e.g., "account:act_123456")
-        
+        id: The record ID to fetch (format: "type:id", e.g., "account:act_123456").
+            Must have been returned by a previous 'search' call.
+
     Returns:
-        JSON response with complete record data including id, title, text, and metadata
-        
-    Example Usage:
-        fetch(id="account:act_123456789")
-        fetch(id="campaign:23842588888640185")
-        fetch(id="ad:23842614006130185")
-        fetch(id="page:123456789")
+        JSON response with record data, or "Record not found" if the record
+        was not previously cached by 'search'.
     """
     if not id:
         return json.dumps({

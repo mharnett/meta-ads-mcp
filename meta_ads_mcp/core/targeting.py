@@ -1,7 +1,7 @@
 """Targeting search functionality for Meta Ads API."""
 
 import json
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 import os
 from .api import meta_api_tool, make_api_request
 from .server import mcp_server
@@ -12,27 +12,27 @@ from .server import mcp_server
 async def search_interests(query: str, access_token: Optional[str] = None, limit: int = 25) -> str:
     """
     Search for interest targeting options by keyword.
-    
+
     Args:
         query: Search term for interests (e.g., "baseball", "cooking", "travel")
         access_token: Meta API access token (optional - will use cached token if not provided)
         limit: Maximum number of results to return (default: 25)
-    
+
     Returns:
         JSON string containing interest data with id, name, audience_size, and path fields
     """
     if not query:
         return json.dumps({"error": "No search query provided"}, indent=2)
-    
+
     endpoint = "search"
     params = {
         "type": "adinterest",
         "q": query,
         "limit": limit
     }
-    
+
     data = await make_api_request(endpoint, access_token, params)
-    
+
     return json.dumps(data, indent=2)
 
 
@@ -41,27 +41,27 @@ async def search_interests(query: str, access_token: Optional[str] = None, limit
 async def get_interest_suggestions(interest_list: List[str], access_token: Optional[str] = None, limit: int = 25) -> str:
     """
     Get interest suggestions based on existing interests.
-    
+
     Args:
         interest_list: List of interest names to get suggestions for (e.g., ["Basketball", "Soccer"])
-        access_token: Meta API access token (optional - will use cached token if not provided)  
+        access_token: Meta API access token (optional - will use cached token if not provided)
         limit: Maximum number of suggestions to return (default: 25)
-    
+
     Returns:
         JSON string containing suggested interests with id, name, audience_size, and description fields
     """
     if not interest_list:
         return json.dumps({"error": "No interest list provided"}, indent=2)
-    
+
     endpoint = "search"
     params = {
-        "type": "adinterestsuggestion", 
+        "type": "adinterestsuggestion",
         "interest_list": json.dumps(interest_list),
         "limit": limit
     }
-    
+
     data = await make_api_request(endpoint, access_token, params)
-    
+
     return json.dumps(data, indent=2)
 
 
@@ -69,7 +69,7 @@ async def get_interest_suggestions(interest_list: List[str], access_token: Optio
 @meta_api_tool
 async def estimate_audience_size(
     access_token: Optional[str] = None,
-    account_id: Optional[str] = None,
+    account_id: Optional[Union[str, int]] = None,
     targeting: Optional[Dict[str, Any]] = None,
     optimization_goal: str = "REACH",
     # Backwards compatibility for simple interest validation
@@ -105,6 +105,10 @@ async def estimate_audience_size(
         JSON string with audience estimation results including estimated_audience_size,
         reach_estimate, and targeting validation
     """
+    # Coerce numeric IDs to strings
+    if account_id is not None:
+        account_id = str(account_id)
+
     # Handle backwards compatibility - simple interest validation
     # Check if we're in backwards compatibility mode (interest params provided OR no comprehensive params)
     is_backwards_compatible_call = (interest_list or interest_fbid_list) or (not account_id and not targeting)
@@ -456,11 +460,11 @@ async def estimate_audience_size(
 async def search_behaviors(access_token: Optional[str] = None, limit: int = 50) -> str:
     """
     Get all available behavior targeting options.
-    
+
     Args:
         access_token: Meta API access token (optional - will use cached token if not provided)
         limit: Maximum number of results to return (default: 50)
-    
+
     Returns:
         JSON string containing behavior targeting options with id, name, audience_size bounds, path, and description
     """
@@ -470,9 +474,9 @@ async def search_behaviors(access_token: Optional[str] = None, limit: int = 50) 
         "class": "behaviors",
         "limit": limit
     }
-    
+
     data = await make_api_request(endpoint, access_token, params)
-    
+
     return json.dumps(data, indent=2)
 
 

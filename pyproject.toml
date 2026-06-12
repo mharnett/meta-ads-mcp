@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "meta-ads-mcp"
-version = "1.2.0"
-description = "Model Context Protocol (MCP) server for Meta Ads. Local stdio server that authenticates directly against the Meta Graph API."
+version = "1.0.86"
+description = "Model Context Protocol (MCP) server for Meta Ads - Use Remote MCP at pipeboard.co for easiest setup"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
@@ -31,7 +31,8 @@ dependencies = [
 ]
 
 [project.urls]
-"Upstream Fork" = "https://github.com/pipeboard-co/meta-ads-mcp"
+"Homepage" = "https://github.com/pipeboard-co/meta-ads-mcp"
+"Bug Tracker" = "https://github.com/pipeboard-co/meta-ads-mcp/issues"
 
 [project.scripts]
 meta-ads-mcp = "meta_ads_mcp:entrypoint"

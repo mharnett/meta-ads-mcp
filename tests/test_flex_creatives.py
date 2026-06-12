@@ -52,7 +52,7 @@ class TestFlexCreatives:
             assert creative_data["asset_feed_spec"]["optimization_type"] == "DEGREES_OF_FREEDOM"
 
     async def test_flex_creative_multiple_image_hashes(self):
-        """Multiple image_hashes produces correct images array in asset_feed_spec."""
+        """Multiple image_hashes with DOF: call proceeds but includes a warning in the response."""
         sample_creative_data = {
             "id": "123456789",
             "name": "Multi-Image FLEX",
@@ -75,6 +75,9 @@ class TestFlexCreatives:
 
             result_data = json.loads(result)
             assert result_data["success"] is True
+            # Warning is present in the response
+            assert "warning" in result_data
+            assert "DEGREES_OF_FREEDOM" in result_data["warning"]
 
             call_args_list = mock_api.call_args_list
             first_call = call_args_list[0]
@@ -138,10 +141,10 @@ class TestFlexCreatives:
         if "data" in result_data:
             error_data = json.loads(result_data["data"])
             assert "error" in error_data
-            assert "Cannot specify both 'image_hash' and 'image_hashes'" in error_data["error"]
+            assert "Only one media source" in error_data["error"]
         else:
             assert "error" in result_data
-            assert "Cannot specify both 'image_hash' and 'image_hashes'" in result_data["error"]
+            assert "Only one media source" in result_data["error"]
 
     async def test_validation_cannot_mix_message_and_messages(self):
         """Cannot specify both message and messages."""
@@ -185,25 +188,29 @@ class TestFlexCreatives:
             assert "error" in result_data
             assert "Maximum 10 image hashes" in result_data["error"]
 
-    async def test_validation_invalid_optimization_type(self):
-        """Invalid optimization_type values are rejected."""
+    async def test_optimization_type_placement_accepted(self):
+        """PLACEMENT optimization_type is accepted (not blocked)."""
+        # optimization_type=PLACEMENT should be passed through to Meta API.
+        # It will fail on link_url validation since we do not provide it here,
+        # but it must NOT be rejected with "Invalid optimization_type".
         result = await create_ad_creative(
             access_token="test_token",
             account_id="act_123456789",
             name="Test",
             image_hash="abc123",
             page_id="987654321",
-            optimization_type="INVALID_VALUE"
+            optimization_type="PLACEMENT"
         )
 
         result_data = json.loads(result)
         if "data" in result_data:
             error_data = json.loads(result_data["data"])
-            assert "error" in error_data
-            assert "Invalid optimization_type" in error_data["error"]
+            # Should NOT have "Invalid optimization_type" error
+            if "error" in error_data:
+                assert "Invalid optimization_type" not in error_data["error"]
         else:
-            assert "error" in result_data
-            assert "Invalid optimization_type" in result_data["error"]
+            if "error" in result_data:
+                assert "Invalid optimization_type" not in result_data["error"]
 
     async def test_flex_creative_single_image_uses_asset_feed_spec(self):
         """FLEX creative with single image still uses asset_feed_spec when optimization_type is set."""
@@ -238,10 +245,13 @@ class TestFlexCreatives:
             assert "asset_feed_spec" in creative_data
             assert creative_data["asset_feed_spec"]["images"] == [{"hash": "abc123"}]
             assert creative_data["asset_feed_spec"]["optimization_type"] == "DEGREES_OF_FREEDOM"
-            # object_story_spec needs page_id and link_data (Meta API requires the link field)
+            # object_story_spec needs page_id + link_data with destination URL
+            # (Meta rejects object_story_spec without link — error 2061015)
+            # DOF link_data must include image_hash for Meta to find the image
+            # (fix for subcode 2446388 "Could not get image for creative")
             assert creative_data["object_story_spec"] == {
                 "page_id": "987654321",
-                "link_data": {"link": "https://example.com"}
+                "link_data": {"link": "https://example.com", "image_hash": "abc123"}
             }
 
     async def test_no_optimization_type_unchanged_behavior(self):
@@ -317,7 +327,22 @@ class TestFlexCreatives:
             assert afs["bodies"] == [{"text": "Text A"}, {"text": "Text B"}]
             assert afs["titles"] == [{"text": "Headline 1"}, {"text": "Headline 2"}]
             assert afs["descriptions"] == [{"text": "Desc 1"}, {"text": "Desc 2"}]
-            assert afs["call_to_action_types"] == ["SHOP_NOW"]
+            # DOF: CTA goes in object_story_spec.link_data, not in asset_feed_spec
+            assert "call_to_action_types" not in afs
+            # DOF: link_urls omitted, link goes in link_data.link
+            assert "link_urls" not in afs
+
+            # Multi-image: link_data must include image_hash as primary anchor.
+            # Without it, Meta silently ignores asset_feed_spec.
+            # CTA is placed in link_data for DOF creatives.
+            assert creative_data["object_story_spec"] == {
+                "page_id": "987654321",
+                "link_data": {
+                    "link": "https://example.com",
+                    "image_hash": "hash1",
+                    "call_to_action": {"type": "SHOP_NOW", "value": {"link": "https://example.com"}},
+                },
+            }
 
     async def test_image_hashes_without_optimization_type_uses_asset_feed(self):
         """image_hashes (plural) triggers asset_feed_spec even without optimization_type."""
@@ -354,8 +379,13 @@ class TestFlexCreatives:
             # No optimization_type should be set
             assert "optimization_type" not in creative_data["asset_feed_spec"]
 
+            # Non-DOF: object_story_spec must NOT contain link_data;
+            # URLs, images, CTA live exclusively in asset_feed_spec.
+            assert creative_data["object_story_spec"]["page_id"] == "987654321"
+            assert "link_data" not in creative_data["object_story_spec"]
+
     async def test_no_image_hash_or_image_hashes_returns_error(self):
-        """Must provide either image_hash or image_hashes."""
+        """Must provide either image_hash, image_hashes, or video_id."""
         result = await create_ad_creative(
             access_token="test_token",
             account_id="act_123456789",
@@ -367,10 +397,10 @@ class TestFlexCreatives:
         if "data" in result_data:
             error_data = json.loads(result_data["data"])
             assert "error" in error_data
-            assert "image hash" in error_data["error"].lower()
+            assert "no media provided" in error_data["error"].lower()
         else:
             assert "error" in result_data
-            assert "image hash" in result_data["error"].lower()
+            assert "no media provided" in result_data["error"].lower()
 
 
 @pytest.mark.asyncio
@@ -602,8 +632,14 @@ class TestSingularParamPromotion:
             assert afs["titles"] == [{"text": "My headline"}]
             assert afs["descriptions"] == [{"text": "My description"}]
             assert afs["bodies"] == [{"text": "My message"}]
-            assert afs["call_to_action_types"] == ["LEARN_MORE"]
+            # DOF: CTA goes in object_story_spec.link_data, not in asset_feed_spec
+            assert "call_to_action_types" not in afs
             assert afs["images"] == [{"hash": "abc123"}]
+
+            # CTA is placed in link_data for DOF creatives
+            assert creative_data["object_story_spec"]["link_data"]["call_to_action"] == {
+                "type": "LEARN_MORE", "value": {"link": "https://example.com"}
+            }
 
     async def test_update_singular_headline_promoted_with_optimization_type(self):
         """Singular headline promoted in update_ad_creative when optimization_type is set."""

@@ -1,8 +1,9 @@
-"""Tests for ad_formats parameter and AUTOMATIC_FORMAT (Flexible) default behavior.
+"""Tests for ad_formats parameter defaults and explicit override behavior.
 
-When using optimization_type="DEGREES_OF_FREEDOM" with image_hashes, the ad_formats
-should default to ["AUTOMATIC_FORMAT"] (Flexible format in Ads Manager) instead of
-["SINGLE_IMAGE"]. Users can also explicitly pass ad_formats to override the default.
+ad_formats always defaults to ["SINGLE_IMAGE"] (even with DEGREES_OF_FREEDOM).
+AUTOMATIC_FORMAT is NOT valid for creation/update — Meta silently ignores the
+entire asset_feed_spec when it encounters it. Users can explicitly pass ad_formats
+to override the default (e.g., for future-proofing if Meta adds support).
 """
 
 import pytest
@@ -15,8 +16,12 @@ from meta_ads_mcp.core.ads import create_ad_creative, update_ad_creative
 class TestAdFormatsDefaultCreate:
     """Test ad_formats defaults in create_ad_creative."""
 
-    async def test_dof_with_image_hashes_defaults_to_automatic_format(self):
-        """DEGREES_OF_FREEDOM + image_hashes should default ad_formats to AUTOMATIC_FORMAT."""
+    async def test_dof_with_image_hashes_omits_ad_formats(self):
+        """DEGREES_OF_FREEDOM + image_hashes should omit ad_formats entirely.
+
+        For DOF creatives, ad_formats is not needed — Meta handles format
+        selection via optimization_type=DEGREES_OF_FREEDOM.
+        """
         sample_creative_data = {"id": "123", "name": "Flex", "status": "ACTIVE"}
 
         with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
@@ -38,10 +43,10 @@ class TestAdFormatsDefaultCreate:
 
             creative_data = mock_api.call_args_list[0][0][2]
             afs = creative_data["asset_feed_spec"]
-            assert afs["ad_formats"] == ["AUTOMATIC_FORMAT"]
+            assert "ad_formats" not in afs
 
-    async def test_dof_without_image_hashes_defaults_to_single_image(self):
-        """DEGREES_OF_FREEDOM with single image_hash (no image_hashes) defaults to SINGLE_IMAGE."""
+    async def test_dof_without_image_hashes_omits_ad_formats(self):
+        """DEGREES_OF_FREEDOM with single image_hash (no image_hashes) omits ad_formats."""
         sample_creative_data = {"id": "123", "name": "Flex", "status": "ACTIVE"}
 
         with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
@@ -63,7 +68,7 @@ class TestAdFormatsDefaultCreate:
 
             creative_data = mock_api.call_args_list[0][0][2]
             afs = creative_data["asset_feed_spec"]
-            assert afs["ad_formats"] == ["SINGLE_IMAGE"]
+            assert "ad_formats" not in afs
 
     async def test_no_dof_defaults_to_single_image(self):
         """Without DEGREES_OF_FREEDOM, ad_formats defaults to SINGLE_IMAGE."""
@@ -171,8 +176,11 @@ class TestAdFormatsDefaultCreate:
 class TestAdFormatsDefaultUpdate:
     """Test ad_formats defaults in update_ad_creative."""
 
-    async def test_update_dof_defaults_to_automatic_format(self):
-        """update_ad_creative with DEGREES_OF_FREEDOM defaults to AUTOMATIC_FORMAT."""
+    async def test_update_dof_defaults_to_single_image(self):
+        """update_ad_creative with DEGREES_OF_FREEDOM defaults to SINGLE_IMAGE.
+
+        AUTOMATIC_FORMAT is NOT valid — Meta silently ignores asset_feed_spec.
+        """
         sample_data = {"id": "123", "name": "Updated", "status": "ACTIVE"}
 
         with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
@@ -190,7 +198,7 @@ class TestAdFormatsDefaultUpdate:
 
             creative_data = mock_api.call_args_list[0][0][2]
             afs = creative_data["asset_feed_spec"]
-            assert afs["ad_formats"] == ["AUTOMATIC_FORMAT"]
+            assert afs["ad_formats"] == ["SINGLE_IMAGE"]
 
     async def test_update_without_dof_defaults_to_single_image(self):
         """update_ad_creative without DEGREES_OF_FREEDOM defaults to SINGLE_IMAGE."""
@@ -266,8 +274,8 @@ class TestFlexibleCreativeFullFlow:
             creative_data = mock_api.call_args_list[0][0][2]
             afs = creative_data["asset_feed_spec"]
 
-            # Key assertion: AUTOMATIC_FORMAT for Flexible
-            assert afs["ad_formats"] == ["AUTOMATIC_FORMAT"]
+            # DOF creatives omit ad_formats — Meta handles format via optimization_type
+            assert "ad_formats" not in afs
             assert afs["optimization_type"] == "DEGREES_OF_FREEDOM"
             assert afs["images"] == [
                 {"hash": "hash1"}, {"hash": "hash2"}, {"hash": "hash3"}
@@ -281,13 +289,67 @@ class TestFlexibleCreativeFullFlow:
             assert afs["descriptions"] == [
                 {"text": "Desc 1"}, {"text": "Desc 2"}
             ]
-            assert afs["call_to_action_types"] == ["SHOP_NOW"]
-            assert afs["link_urls"] == [{"website_url": "https://example.com"}]
+            # DOF: CTA goes in object_story_spec.link_data, not in asset_feed_spec
+            assert "call_to_action_types" not in afs
+            # DOF: link_urls omitted, link goes in link_data.link
+            assert "link_urls" not in afs
 
-            # object_story_spec still required
+            # Multi-image: link_data must include image_hash as primary anchor.
+            # Without it, Meta silently ignores asset_feed_spec.
+            # CTA is placed in link_data for DOF creatives.
             assert creative_data["object_story_spec"] == {
                 "page_id": "987654321",
-                "link_data": {"link": "https://example.com"}
+                "link_data": {
+                    "link": "https://example.com",
+                    "image_hash": "hash1",
+                    "call_to_action": {"type": "SHOP_NOW", "value": {"link": "https://example.com"}},
+                },
+            }
+
+    async def test_full_flexible_creative_single_image_keeps_link_data(self):
+        """Single-image DEGREES_OF_FREEDOM creative keeps link_data in object_story_spec.
+
+        Meta historically required link_data for single-image asset_feed_spec
+        creatives (error 2061015). This test preserves the verified behavior.
+        """
+        sample_creative_data = {"id": "123", "name": "Single Flex", "status": "ACTIVE"}
+
+        with patch('meta_ads_mcp.core.ads.make_api_request', new_callable=AsyncMock) as mock_api:
+            mock_api.return_value = sample_creative_data
+
+            result = await create_ad_creative(
+                access_token="test_token",
+                account_id="act_123456789",
+                name="Single Image Flexible Creative",
+                image_hash="hash1",
+                page_id="987654321",
+                link_url="https://example.com",
+                messages=["Primary text A", "Primary text B"],
+                headlines=["Headline 1", "Headline 2"],
+                optimization_type="DEGREES_OF_FREEDOM",
+                call_to_action_type="SHOP_NOW"
+            )
+
+            result_data = json.loads(result)
+            assert result_data["success"] is True
+
+            creative_data = mock_api.call_args_list[0][0][2]
+            afs = creative_data["asset_feed_spec"]
+
+            assert "ad_formats" not in afs
+            assert afs["optimization_type"] == "DEGREES_OF_FREEDOM"
+            assert afs["images"] == [{"hash": "hash1"}]
+
+            # Single-image: object_story_spec keeps link_data (error 2061015 without it)
+            # CTA is placed in link_data for DOF creatives.
+            # image_hash in link_data fixes subcode 2446388 "Could not get image"
+            assert creative_data["object_story_spec"] == {
+                "page_id": "987654321",
+                "link_data": {
+                    "link": "https://example.com",
+                    "image_hash": "hash1",
+                    "call_to_action": {"type": "SHOP_NOW", "value": {"link": "https://example.com"}},
+                }
             }
 
     async def test_backward_compat_simple_creative_unaffected(self):
