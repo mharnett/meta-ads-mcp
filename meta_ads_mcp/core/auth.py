@@ -8,6 +8,8 @@ import os
 import webbrowser
 import asyncio
 import json
+import secrets
+from urllib.parse import urlencode
 from .utils import logger
 import requests
 
@@ -24,7 +26,10 @@ from .callback_server import (
 # where get_account_pages failed for regular users due to missing page permissions
 AUTH_SCOPE = "business_management,public_profile,pages_show_list,pages_read_engagement"
 AUTH_REDIRECT_URI = "http://localhost:8888/callback"
-AUTH_RESPONSE_TYPE = "token"
+# Authorization code flow (NOT implicit "token"): the token is never exposed in
+# the redirect URL / browser history. The code is exchanged server-side using
+# the app secret. CSRF is mitigated by a per-request random `state` (see below).
+AUTH_RESPONSE_TYPE = "code"
 
 # Log important configuration information
 logger.info("Authentication module initialized")
@@ -223,14 +228,24 @@ class AuthManager:
             logger.error(f"Error saving token to cache: {e}")
     
     def get_auth_url(self) -> str:
-        """Generate the Facebook OAuth URL for desktop app flow"""
-        return (
-            f"https://www.facebook.com/v24.0/dialog/oauth?"
-            f"client_id={self.app_id}&"
-            f"redirect_uri={self.redirect_uri}&"
-            f"scope={AUTH_SCOPE}&"
-            f"response_type={AUTH_RESPONSE_TYPE}"
-        )
+        """Generate the Facebook OAuth authorization-code URL.
+
+        Mints a fresh high-entropy CSRF ``state`` per call and records it on the
+        callback server's ``token_container`` so the callback handler can reject
+        any forged callback whose state does not match.
+        """
+        # 32 bytes of entropy -> ~43 url-safe characters.
+        state = secrets.token_urlsafe(32)
+        token_container["expected_state"] = state
+
+        params = {
+            "client_id": self.app_id,
+            "redirect_uri": self.redirect_uri,
+            "scope": AUTH_SCOPE,
+            "response_type": AUTH_RESPONSE_TYPE,
+            "state": state,
+        }
+        return f"https://www.facebook.com/v24.0/dialog/oauth?{urlencode(params)}"
     
     def authenticate(self, force_refresh: bool = False) -> Optional[str]:
         """

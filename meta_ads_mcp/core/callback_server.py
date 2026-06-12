@@ -5,6 +5,8 @@ import socket
 import asyncio
 import json
 import logging
+import secrets
+import time
 import webbrowser
 import os
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -13,8 +15,49 @@ from typing import Dict, Any, Optional
 
 from .utils import logger
 
-# Global token container for communication between threads
+# Global token container for communication between threads.
+# `expected_state` is the CSRF state minted when the auth URL is generated;
+# the callback only accepts a code if the returned state matches it.
 token_container = {"token": None, "expires_in": None, "user_id": None}
+
+
+def validate_and_store_callback(code: Optional[str], state: Optional[str]) -> bool:
+    """Validate the OAuth callback's CSRF state and store the auth code if valid.
+
+    Authorization-code flow CSRF protection: the `state` returned by the
+    provider must match the high-entropy value we minted in
+    ``AuthManager.get_auth_url`` (stored as ``token_container['expected_state']``).
+    A mismatch — or an inbound callback when no flow was initiated — indicates a
+    forged / CSRF callback, so the code is rejected and NOT stored.
+
+    Returns:
+        True if the state validated and the code was stored, False otherwise.
+    """
+    expected = token_container.get("expected_state")
+
+    if not expected:
+        logger.error("OAuth callback rejected: no expected state (no flow initiated)")
+        return False
+    if not state:
+        logger.error("OAuth callback rejected: missing state parameter (possible CSRF)")
+        return False
+
+    # Constant-time comparison to avoid leaking the state via timing.
+    if not secrets.compare_digest(str(state), str(expected)):
+        logger.error("OAuth callback rejected: state mismatch (possible CSRF)")
+        return False
+
+    if not code:
+        logger.error("OAuth callback rejected: state valid but no code present")
+        return False
+
+    token_container["auth_code"] = code
+    token_container["state"] = state
+    token_container["timestamp"] = time.monotonic()
+    # Single-use: consume the expected state so a replayed callback can't reuse it.
+    token_container["expected_state"] = None
+    logger.info("OAuth callback accepted: state validated, authorization code stored")
+    return True
 
 # Global variables for server thread and state
 callback_server_thread = None
@@ -74,18 +117,9 @@ class CallbackHandler(BaseHTTPRequestHandler):
             </html>
             """
             logger.error(f"OAuth authorization failed: {error}")
-        elif code:
-            # Success case - we have the authorization code
-            logger.info("Received authorization code: [CODE PRESENT]")
-            
-            # Store the authorization code temporarily
-            # The auth module will exchange this for an access token
-            token_container.update({
-                "auth_code": code,
-                "state": state,
-                "timestamp": asyncio.get_event_loop().time()
-            })
-            
+        elif code and validate_and_store_callback(code, state):
+            # Success case - authorization code received AND CSRF state validated.
+            # The auth module will exchange this code for an access token.
             html = """
             <html>
             <head><title>Authorization Successful</title></head>
@@ -103,6 +137,19 @@ class CallbackHandler(BaseHTTPRequestHandler):
             </html>
             """
             logger.info("OAuth authorization successful")
+        elif code:
+            # Code present but state validation failed -> reject (possible CSRF).
+            html = """
+            <html>
+            <head><title>Authorization Rejected</title></head>
+            <body>
+                <h1>Authorization Rejected</h1>
+                <p>The authorization could not be verified (state validation failed).</p>
+                <p>This may indicate a CSRF attempt. Please restart authentication.</p>
+            </body>
+            </html>
+            """
+            logger.error("OAuth callback rejected: state validation failed")
         else:
             # No code or error - something unexpected happened
             html = """
