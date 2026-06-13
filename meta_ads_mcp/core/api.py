@@ -33,6 +33,14 @@ def redact_access_token_from_url(url: str) -> str:
     new_query = urlencode(params, doseq=True)
     return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
 
+
+def ensure_act_prefix(account_id: str) -> str:
+    """Ensure account_id has 'act_' prefix for Meta Ads API compatibility."""
+    if not account_id:
+        return account_id
+    return f"act_{account_id}" if not account_id.startswith("act_") else account_id
+
+
 class GraphAPIError(Exception):
     """Exception raised for errors from the Graph API."""
     def __init__(self, error_data: Dict[str, Any]):
