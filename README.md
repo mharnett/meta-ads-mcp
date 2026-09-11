@@ -10,6 +10,15 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for in
 
 mcp-name: co.pipeboard/meta-ads-mcp
 
+> **⚠️ Deprecated (internal use):** For drak-stack-monorepo work, this fork is deprecated
+> in favor of [`mcp-meta-ads-incrementality`](https://github.com/mharnett/mcp-meta-ads-incrementality)
+> (`mharnett/mcp-meta-ads-incrementality`). New work should target that server; this fork
+> is retained only until confirmed capability gaps are closed there:
+>
+> - **Image/video library listing** — no equivalent to this repo's asset-library browsing tools.
+> - **Placement-specific creative** — no equivalent to `asset_customization_rules` /
+>   placement-specific creative support in `create_ad_creative`.
+
 ## Community & Support
 
 - [Discord](https://discord.gg/YzMwQ8zrjr). Join the community.
