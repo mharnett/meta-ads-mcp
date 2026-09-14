@@ -20,6 +20,15 @@ jobs:
     steps:
     - name: Check out code
       uses: actions/checkout@v7
+      with:
+        # tests/test_reconciliation_record.py reads real git history: it runs
+        # `git log -1 16b6862` to tie the record's 'port' rows to the commit
+        # that carried them. actions/checkout defaults to fetch-depth: 1, and
+        # in a depth-1 clone that object is absent -- `git log` exits 128 and
+        # the test reads as a missing commit rather than a shallow checkout.
+        # Reproduced 2026-09-14: `git clone --depth 1` -> exit 128; full clone
+        # -> exit 0.
+        fetch-depth: 0
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
