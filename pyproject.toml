@@ -21,6 +21,11 @@ classifiers = [
 dependencies = [
     "httpx>=0.26.0",
     "mcp[cli]==1.12.2",
+    # Transitive via mcp (which floors it at >=0.27, so this only raises it).
+    # Patched floor for CVE-2026-48710 (BadHost), vulnerable in starlette <= 1.0.0.
+    # Only reachable via the streamable-http transport, which run-mcp.sh does not
+    # use — hygiene, not a live exposure. Ported from upstream 93083c6 (#136).
+    "starlette>=1.0.1",
     "python-dotenv>=1.1.0",
     "requests>=2.32.3",
     "Pillow>=10.0.0",
