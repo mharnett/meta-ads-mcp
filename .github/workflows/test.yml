@@ -10,12 +10,25 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      # Without this, one version's failure cancels the others mid-run and
+      # they report CANCELLED -- so a single red cell hides whether the other
+      # interpreters would have passed. Every version reports its own result.
+      fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12"]
 
     steps:
     - name: Check out code
       uses: actions/checkout@v7
+      with:
+        # tests/test_reconciliation_record.py reads real git history: it runs
+        # `git log -1 16b6862` to tie the record's 'port' rows to the commit
+        # that carried them. actions/checkout defaults to fetch-depth: 1, and
+        # in a depth-1 clone that object is absent -- `git log` exits 128 and
+        # the test reads as a missing commit rather than a shallow checkout.
+        # Reproduced 2026-09-14: `git clone --depth 1` -> exit 128; full clone
+        # -> exit 0.
+        fetch-depth: 0
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
@@ -27,6 +40,9 @@ jobs:
         python -m pip install --upgrade pip
         pip install build pytest
         pip install -e .
+
+    - name: Run tests
+      run: python -m pytest -q
 
     - name: Test package build
       run: python -m build

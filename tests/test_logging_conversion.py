@@ -5,6 +5,8 @@ from unittest.mock import patch, MagicMock
 import sys
 import os
 
+import pytest
+
 # Add meta_ads_mcp to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -12,6 +14,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 class TestLoggingInServer:
     """Verify server.py uses logging instead of print()."""
 
+    @pytest.mark.skip(
+        reason=(
+            "meta_ads_mcp.core.server has no StdioServer attribute to patch: "
+            "the module drives stdio transport via mcp_server.run(transport='stdio') "
+            "from the mcp SDK, not a local StdioServer class, so this test's mock "
+            "target never existed and the test body asserts nothing anyway."
+        )
+    )
     def test_server_initialization_logs_to_logger(self, caplog):
         """Server startup should log version via logger, not print()."""
         caplog.clear()
@@ -54,15 +64,17 @@ class TestPrintStatementsRemoved:
     def test_no_print_for_user_messages(self):
         """Core modules should not use print() for messages."""
         import ast
-        core_files = [
-            "/Users/mark/claude-code/mcps/meta-ads-mcp/meta_ads_mcp/core/server.py",
-            "/Users/mark/claude-code/mcps/meta-ads-mcp/meta_ads_mcp/core/auth.py",
-            "/Users/mark/claude-code/mcps/meta-ads-mcp/meta_ads_mcp/core/callback_server.py",
-        ]
+        from pathlib import Path
+
+        # Resolve from __file__, never an absolute checkout path: hardcoded
+        # /Users/mark/... paths pass only on one machine and are a guaranteed
+        # FileNotFoundError on any CI runner.
+        core = Path(__file__).resolve().parent.parent / "meta_ads_mcp" / "core"
+        core_files = [core / "server.py", core / "auth.py", core / "callback_server.py"]
 
         for filepath in core_files:
-            with open(filepath) as f:
-                tree = ast.parse(f.read())
+            assert filepath.exists(), f"core module missing at {filepath}"
+            tree = ast.parse(filepath.read_text())
 
             # Find all print() calls
             print_calls = [
