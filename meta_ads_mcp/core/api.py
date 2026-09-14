@@ -92,7 +92,13 @@ async def make_api_request(
         "User-Agent": USER_AGENT,
     }
     
-    request_params = params or {}
+    # Shallow-copy the caller's params: this function injects the access_token
+    # below. Mutating the caller's dict leaked the live token into any tool
+    # response that echoes its params back after the call — update_ad_creative's
+    # "attempted_updates" (Meta error subcode 1815573) and "update_data_sent"
+    # both do. Wire format is unchanged; the token is still sent.
+    # Ported from upstream 555ae48 (pipeboard-co/meta-ads-mcp#145).
+    request_params = dict(params) if params else {}
     request_params["access_token"] = access_token
     
     # Logging the request (masking token for security)
