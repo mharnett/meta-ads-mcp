@@ -7,13 +7,37 @@ via keychain_shell_helper_path()) instead of shelling out to
 access and no server launch. Mirrors drak-ops's own
 tests/test_keychain_get_sh.py fake-security-on-PATH technique.
 """
+import importlib.util
 import os
 import stat
 import subprocess
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "run-mcp.sh"
+
+# run-mcp.sh resolves the shared helper by importing drak_ops, so the two
+# behavioral tests below cannot run without that package on the interpreter
+# path. It lives in the private mharnett/drak-ops repo and this fork's CI
+# installs no credential to reach it, so on a runner they are skipped rather
+# than silently red.
+#
+# KNOWN COVERAGE GAP, stated rather than left to look complete: on CI only
+# the text ratchet at the bottom of this file runs. It is the assertion that
+# actually guards the regression this file exists for -- that run-mcp.sh keeps
+# sourcing the shared helper instead of re-inlining `security
+# find-generic-password` -- and it needs no dependency, so the ratchet holds
+# everywhere. What CI does not exercise is the end-to-end launch, which is a
+# macOS Keychain path that only ever runs on Mark's Mac in the first place.
+# Closing the gap properly means installing drak-ops in this workflow, which
+# means putting a PAT into a fork's CI; not worth it for this.
+_HAS_DRAK_OPS = importlib.util.find_spec("drak_ops") is not None
+needs_drak_ops = pytest.mark.skipif(
+    not _HAS_DRAK_OPS,
+    reason="drak_ops not importable: run-mcp.sh's keychain_shell_helper_path() lookup would fail",
+)
 
 FAKE_SECURITY = """#!/bin/bash
 acct=""; svc=""
@@ -81,12 +105,14 @@ def _run_script(tmp_path, keychain_rows, python_body=FAKE_PYTHON_ECHO):
     )
 
 
+@needs_drak_ops
 def test_token_present_resolves_and_launches(tmp_path):
     result = _run_script(tmp_path, "meta-ads-mcp|META_ACCESS_TOKEN|tok123")
     assert result.returncode == 0
     assert "TOKEN=tok123" in result.stdout
 
 
+@needs_drak_ops
 def test_token_missing_is_fatal(tmp_path):
     result = _run_script(tmp_path, "", python_body=FAKE_PYTHON_SILENT)
     assert result.returncode == 1
