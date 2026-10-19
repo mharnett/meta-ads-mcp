@@ -21,6 +21,11 @@ classifiers = [
 dependencies = [
     "httpx>=0.26.0",
     "mcp[cli]==1.12.2",
+    # mcp 1.12.2's fastmcp/utilities/func_metadata.py imports the private
+    # pydantic._internal._typing_extra.eval_type_backport, removed in pydantic
+    # 2.14 — every module fails to import on a fresh install. Lift this cap
+    # together with the mcp pin.
+    "pydantic>=2.11,<2.14",
     # Transitive via mcp (which floors it at >=0.27, so this only raises it).
     # Patched floor for CVE-2026-48710 (BadHost), vulnerable in starlette <= 1.0.0.
     # Only reachable via the streamable-http transport, which run-mcp.sh does not
