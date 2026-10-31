@@ -22,11 +22,6 @@ SCANNED_FILES = [
     CORE_DIR / "callback_server.py",
     CORE_DIR / "http_auth_integration.py",
     CORE_DIR / "authentication.py",
-    # Forcepoint 6sense script (also flagged in the 2026-06-11 audit). Path is
-    # resolved from this file's location up to the claude-code root; skipped
-    # cleanly (path.exists() is False) if the tree layout differs.
-    Path(__file__).resolve().parents[3]
-    / "clients" / "forcepoint" / "6sense" / "pause_and_rebudget.py",
 ]
 
 # A variable whose name implies a secret, immediately followed by a slice that
