@@ -241,11 +241,11 @@ For advanced users who need to self-host, the package can be installed from sour
        - `LEAD_GENERATION` → `OUTCOME_LEADS`
        - `CONVERSIONS`, `CATALOG_SALES`, `MESSAGES` (sales-focused flows) → `OUTCOME_SALES`
        - `APP_INSTALLS` → `OUTCOME_APP_PROMOTION`
-     - `status`: Initial campaign status (default: PAUSED)
+     - `status`: Must be `PAUSED` (the default). Any other value is refused: create paused, then enable with `update_campaign`.
      - `special_ad_categories`: List of special ad categories if applicable
-     - `daily_budget`: Daily budget in account currency (in cents)
+     - `daily_budget`: Daily budget in account currency (in cents). With neither `daily_budget` nor `lifetime_budget`, the campaign is created with no campaign budget (budgets go on the ad sets); no budget is filled in for you.
      - `lifetime_budget`: Lifetime budget in account currency (in cents)
-     - `bid_strategy`: Bid strategy. Must be one of: `LOWEST_COST_WITHOUT_CAP`, `LOWEST_COST_WITH_BID_CAP`, `COST_CAP`, `LOWEST_COST_WITH_MIN_ROAS`.
+     - `bid_strategy`: Bid strategy, sent only with a campaign budget. Must be one of: `LOWEST_COST_WITHOUT_CAP`, `LOWEST_COST_WITH_BID_CAP`, `COST_CAP`, `LOWEST_COST_WITH_MIN_ROAS`.
    - Returns: Confirmation with new campaign details
 
    - Example:
@@ -284,7 +284,7 @@ For advanced users who need to self-host, the package can be installed from sour
      - `account_id`: Meta Ads account ID (format: act_XXXXXXXXX)
      - `campaign_id`: Meta Ads campaign ID this ad set belongs to
      - `name`: Ad set name
-     - `status`: Initial ad set status (default: PAUSED)
+     - `status`: Must be `PAUSED` (the default). Any other value is refused: create paused, then enable with `update_adset`.
      - `daily_budget`: Daily budget in account currency (in cents) as a string
      - `lifetime_budget`: Lifetime budget in account currency (in cents) as a string
      - `targeting`: Targeting specifications (e.g., age, location, interests)
@@ -314,7 +314,7 @@ For advanced users who need to self-host, the package can be installed from sour
       - `name`: Ad name
       - `adset_id`: Ad set ID where this ad will be placed
       - `creative_id`: ID of an existing creative to use
-      - `status`: Initial ad status (default: PAUSED)
+      - `status`: Must be `PAUSED` (the default). Any other value is refused: create paused, then enable with `update_ad`.
       - `bid_amount`: Optional bid amount (in cents)
       - `tracking_specs`: Optional tracking specifications
       - `access_token` (optional): Meta API access token

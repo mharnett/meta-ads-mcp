@@ -41,6 +41,21 @@ def ensure_act_prefix(account_id: str) -> str:
     return f"act_{account_id}" if not account_id.startswith("act_") else account_id
 
 
+def paused_only_create_error(tool_name: str, status: Any, enable_with: str) -> Optional[str]:
+    """Return an error message unless ``status`` is PAUSED (case-insensitive).
+
+    Create tools never start delivery: a new campaign, ad set or ad is created
+    PAUSED (staging) and enabled separately once it has been checked.
+    """
+    if isinstance(status, str) and status.strip().upper() == "PAUSED":
+        return None
+    return (
+        f"{tool_name} creates objects PAUSED only (got status={status!r}). "
+        f"Create it PAUSED (the default), then enable it separately with "
+        f"{enable_with}(status='ACTIVE')."
+    )
+
+
 class GraphAPIError(Exception):
     """Exception raised for errors from the Graph API."""
     def __init__(self, error_data: Dict[str, Any]):
