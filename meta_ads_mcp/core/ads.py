@@ -12,7 +12,7 @@ import time
 
 logger = logging.getLogger(__name__)
 
-from .api import meta_api_tool, make_api_request, ensure_act_prefix
+from .api import meta_api_tool, make_api_request, ensure_act_prefix, paused_only_create_error
 from .accounts import get_ad_accounts
 
 # ---------------------------------------------------------------------------
@@ -539,7 +539,8 @@ async def create_ad(
         name: Ad name
         adset_id: Ad set ID where this ad will be placed
         creative_id: ID of an existing creative to use
-        status: Initial ad status (default: PAUSED)
+        status: Must be PAUSED (the default). Any other value is refused: create the
+                ad PAUSED, then enable it separately with update_ad(status='ACTIVE').
         bid_amount: Optional bid amount in account currency (in cents)
         tracking_specs: Optional tracking specifications (e.g., for pixel events).
                       Example: [{"action.type":"offsite_conversion","fb_pixel":["YOUR_PIXEL_ID"]}]
@@ -549,10 +550,17 @@ async def create_ad(
         Dynamic Creative creatives require the parent ad set to have `is_dynamic_creative=true`.
         Otherwise, ad creation will fail with error_subcode 1885998.
     """
+    status_error = paused_only_create_error("create_ad", status, "update_ad")
+    if status_error:
+        return json.dumps({"error": status_error}, indent=2)
+    status = "PAUSED"
+
     # Check required parameters
     if not account_id:
         return json.dumps({"error": "No account ID provided"}, indent=2)
-    
+
+    account_id = ensure_act_prefix(account_id)
+
     if not name:
         return json.dumps({"error": "No ad name provided"}, indent=2)
     

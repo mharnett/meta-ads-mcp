@@ -2,7 +2,7 @@
 
 import json
 from typing import List, Optional, Dict, Any, Union
-from .api import meta_api_tool, make_api_request, ensure_act_prefix
+from .api import meta_api_tool, make_api_request, ensure_act_prefix, paused_only_create_error
 from .accounts import get_ad_accounts
 from .server import mcp_server
 
@@ -147,18 +147,27 @@ async def create_campaign(
                    campaigns and will cause a 400 error. Use the outcome-based
                    values above (e.g., BRAND_AWARENESS → OUTCOME_AWARENESS).
         access_token: Meta API access token (optional - will use cached token if not provided)
-        status: Initial campaign status (default: PAUSED)
+        status: Must be PAUSED (the default). Any other value is refused: create the
+                campaign PAUSED, then enable it separately with update_campaign(status='ACTIVE').
         special_ad_categories: List of special ad categories if applicable
-        daily_budget: Daily budget in account currency (in cents) as a string (only used if use_adset_level_budgets=False)
+        daily_budget: Daily budget in account currency (in cents) as a string (only used if use_adset_level_budgets=False).
+                      If neither daily_budget nor lifetime_budget is given, the campaign is created with no
+                      campaign budget (ad set level budgets): no budget is ever filled in for you.
         lifetime_budget: Lifetime budget in account currency (in cents) as a string (only used if use_adset_level_budgets=False)
         buying_type: Buying type (e.g., 'AUCTION')
-        bid_strategy: Bid strategy (default: LOWEST_COST_WITHOUT_CAP). Must be one of: 'LOWEST_COST_WITHOUT_CAP', 'LOWEST_COST_WITH_BID_CAP', 'COST_CAP', 'LOWEST_COST_WITH_MIN_ROAS'. WARNING: If you use LOWEST_COST_WITH_BID_CAP or COST_CAP, all child ad sets will require bid_amount to be set.
+        bid_strategy: Bid strategy (default: LOWEST_COST_WITHOUT_CAP). Sent only with a campaign budget;
+                      without one, set bid_strategy on the ad sets. Must be one of: 'LOWEST_COST_WITHOUT_CAP', 'LOWEST_COST_WITH_BID_CAP', 'COST_CAP', 'LOWEST_COST_WITH_MIN_ROAS'. WARNING: If you use LOWEST_COST_WITH_BID_CAP or COST_CAP, all child ad sets will require bid_amount to be set.
         bid_cap: Bid cap in account currency (in cents) as a string
         spend_cap: Spending limit for the campaign in account currency (in cents) as a string
         campaign_budget_optimization: Whether to enable campaign budget optimization (only used if use_adset_level_budgets=False)
         ab_test_control_setups: Settings for A/B testing (e.g., [{"name":"Creative A", "ad_format":"SINGLE_IMAGE"}])
         use_adset_level_budgets: If True, budgets will be set at the ad set level instead of campaign level (default: False)
     """
+    status_error = paused_only_create_error("create_campaign", status, "update_campaign")
+    if status_error:
+        return json.dumps({"error": status_error}, indent=2)
+    status = "PAUSED"
+
     # Check required parameters
     if not account_id:
         return json.dumps({"error": "No account ID provided"}, indent=2)
@@ -189,10 +198,12 @@ async def create_campaign(
             "to comply with Meta advertising policies. Ads without the correct category may be rejected."
         )
     
-    # For this example, we'll add a fixed daily budget if none is provided and we're not using ad set level budgets
-    if not daily_budget and not lifetime_budget and not use_adset_level_budgets:
-        daily_budget = "1000"  # Default to $10 USD
-    
+    # Never invent a budget. With no campaign budget given, budgets belong on
+    # the ad sets (the same request use_adset_level_budgets=True sends).
+    uses_campaign_budget = not use_adset_level_budgets and (
+        daily_budget is not None or lifetime_budget is not None
+    )
+
     endpoint = f"{account_id}/campaigns"
     
     params = {
@@ -202,8 +213,7 @@ async def create_campaign(
         "special_ad_categories": json.dumps(special_ad_categories)  # Properly format as JSON string
     }
     
-    # Only set campaign-level budgets if we're not using ad set level budgets
-    if not use_adset_level_budgets:
+    if uses_campaign_budget:
         # Convert budget values to strings if they aren't already
         if daily_budget is not None:
             params["daily_budget"] = str(daily_budget)
@@ -213,16 +223,17 @@ async def create_campaign(
 
         if campaign_budget_optimization is not None:
             params["campaign_budget_optimization"] = "true" if campaign_budget_optimization else "false"
+
+        if bid_strategy:
+            params["bid_strategy"] = bid_strategy
     else:
-        # Meta API v24 requires is_adset_budget_sharing_enabled when not using campaign budget
+        # No campaign budget: Graph v24.0 requires is_adset_budget_sharing_enabled,
+        # and bid_strategy belongs on the ad sets.
         params["is_adset_budget_sharing_enabled"] = "false"
 
     # Add new parameters
     if buying_type:
         params["buying_type"] = buying_type
-    
-    if bid_strategy and not use_adset_level_budgets:
-        params["bid_strategy"] = bid_strategy
     
     if bid_cap is not None:
         params["bid_cap"] = str(bid_cap)
@@ -237,7 +248,7 @@ async def create_campaign(
         data = await make_api_request(endpoint, access_token, params, method="POST")
         
         # Add a note about budget strategy if using ad set level budgets
-        if use_adset_level_budgets:
+        if not uses_campaign_budget:
             data["budget_strategy"] = "ad_set_level"
             data["note"] = "Campaign created with ad set level budgets. Set budgets when creating ad sets within this campaign."
         

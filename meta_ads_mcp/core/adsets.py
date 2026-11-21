@@ -2,7 +2,7 @@
 
 import json
 from typing import Optional, Dict, Any, List
-from .api import meta_api_tool, make_api_request, ensure_act_prefix
+from .api import meta_api_tool, make_api_request, ensure_act_prefix, paused_only_create_error
 from .accounts import get_ad_accounts
 from .server import mcp_server
 
@@ -132,7 +132,8 @@ async def create_adset(
                           OUTCOME_SALES: OFFSITE_CONVERSIONS, VALUE, CONVERSATIONS, LINK_CLICKS, IMPRESSIONS, REACH.
                           OUTCOME_APP_PROMOTION: APP_INSTALLS, APP_INSTALLS_AND_OFFSITE_CONVERSIONS, VALUE.
         billing_event: How you're charged (e.g., 'IMPRESSIONS', 'LINK_CLICKS')
-        status: Initial ad set status (default: PAUSED)
+        status: Must be PAUSED (the default). Any other value is refused: create the
+                ad set PAUSED, then enable it separately with update_adset(status='ACTIVE').
         daily_budget: Daily budget in account currency (in cents) as a string.
                      CBO NOTE: Do NOT set this if the parent campaign already has a budget
                      (Campaign Budget Optimization / CBO mode). Meta only allows budgets at one
@@ -162,8 +163,9 @@ async def create_adset(
                         Use {"roas_average_floor": <value>} where value = target ROAS * 10000.
                         Example: 2.0x ROAS -> {"roas_average_floor": 20000}
         start_time: Start time in ISO 8601 format (e.g., '2023-12-01T12:00:00-0800').
-                   To schedule future delivery: set start_time to a future date and status=ACTIVE.
-                   Meta will show effective_status as SCHEDULED and automatically begin delivery at start_time.
+                   To schedule future delivery: create the ad set PAUSED with a future start_time, then
+                   call update_adset(status='ACTIVE'). Meta will show effective_status as SCHEDULED and
+                   automatically begin delivery at start_time.
                    NOTE: Only ad set start_time controls delivery scheduling. Campaigns do not support start_time.
         end_time: End time in ISO 8601 format. Required when lifetime_budget is specified.
         dsa_beneficiary: DSA beneficiary for European compliance (person/org that benefits from ads).
@@ -203,6 +205,11 @@ async def create_adset(
                          Valid window_days values: 1, 7, 28 (depends on event_type and optimization_goal).
         access_token: Meta API access token (optional - will use cached token if not provided)
     """
+    status_error = paused_only_create_error("create_adset", status, "update_adset")
+    if status_error:
+        return json.dumps({"error": status_error}, indent=2)
+    status = "PAUSED"
+
     # Check required parameters
     if not account_id:
         return json.dumps({"error": "No account ID provided"}, indent=2)
