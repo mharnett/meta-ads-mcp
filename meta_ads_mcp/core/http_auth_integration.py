@@ -142,33 +142,35 @@ def setup_fastmcp_http_auth(mcp_server):
     # 2. Patch the methods that provide the Starlette app instance
     # This ensures our middleware is added to the app Uvicorn will actually serve.
 
-    app_provider_methods = []
-    if mcp_server.settings.json_response:
-        if hasattr(mcp_server, "streamable_http_app") and callable(mcp_server.streamable_http_app):
-            app_provider_methods.append("streamable_http_app")
-        else:
-            logger.warning("mcp_server.streamable_http_app not found or not callable, cannot patch for JSON responses.")
-    else: # SSE
-        if hasattr(mcp_server, "sse_app") and callable(mcp_server.sse_app):
-            app_provider_methods.append("sse_app")
-        else:
-            logger.warning("mcp_server.sse_app not found or not callable, cannot patch for SSE responses.")
-
-    if not app_provider_methods:
-        logger.error("No suitable app provider method (streamable_http_app or sse_app) found on mcp_server. Cannot add HTTP Auth middleware.")
+    # run(transport="streamable-http") always serves streamable_http_app(),
+    # whatever json_response says: json_response only switches the wire
+    # format inside the session manager. Choosing the app by json_response
+    # left the served app ungated under --sse-response (upstream
+    # GHSA-8353-5qhw-8hfw). Patch the served app unconditionally, and sse_app
+    # too in case an SDK change ever routes through it.
+    if not (hasattr(mcp_server, "streamable_http_app") and callable(mcp_server.streamable_http_app)):
+        raise RuntimeError(
+            "mcp_server.streamable_http_app is missing: the streamable-http app "
+            "cannot be protected with AuthInjectionMiddleware"
+        )
+    app_provider_methods = ["streamable_http_app"]
+    if hasattr(mcp_server, "sse_app") and callable(mcp_server.sse_app):
+        app_provider_methods.append("sse_app")
 
     for method_name in app_provider_methods:
         original_app_provider_method = getattr(mcp_server, method_name)
 
-        def new_patched_app_provider_method(*args, **kwargs):
+        # Default args bind this iteration's values; a plain closure would
+        # make every patched provider call the last iteration's original.
+        def new_patched_app_provider_method(*args, _method_name=method_name,
+                                            _original=original_app_provider_method, **kwargs):
             # Call the original method to get/create the Starlette app
-            app = original_app_provider_method(*args, **kwargs)
-            if app:
-                logger.debug(f"Original {method_name} returned app: {type(app)}. Adding AuthInjectionMiddleware.")
-                # Now, add our middleware to this specific app instance
-                setup_starlette_middleware(app)
-            else:
-                logger.error(f"Original {method_name} returned None or a non-app object.")
+            app = _original(*args, **kwargs)
+            if not app:
+                raise RuntimeError(f"Original {_method_name} returned no app; refusing to serve it ungated.")
+            logger.debug(f"Original {_method_name} returned app: {type(app)}. Adding AuthInjectionMiddleware.")
+            # Now, add our middleware to this specific app instance
+            setup_starlette_middleware(app)
             return app
 
         setattr(mcp_server, method_name, new_patched_app_provider_method)
@@ -179,6 +181,7 @@ def setup_fastmcp_http_auth(mcp_server):
 # --- AuthInjectionMiddleware definition ---
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
+from starlette.responses import Response
 
 class AuthInjectionMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
@@ -187,19 +190,38 @@ class AuthInjectionMiddleware(BaseHTTPMiddleware):
 
         auth_token = FastMCPAuthIntegration.extract_token_from_headers(dict(request.headers))
 
-        if auth_token:
-            logger.debug("HTTP Auth Middleware: Extracted auth token: [TOKEN PRESENT]")
-            logger.debug("Injecting auth token into request context")
-            FastMCPAuthIntegration.set_auth_token(auth_token)
-        else:
-            logger.warning("HTTP Auth Middleware: No authentication token found in headers")
+        if not auth_token:
+            # Without this, the request falls through to the tool handlers,
+            # which use the operator's own token (META_ACCESS_TOKEN or the
+            # OAuth cache) on behalf of an anonymous caller. Each HTTP caller
+            # must bring its own Meta token. Same behaviour as upstream
+            # GHSA-9gw6-46qc-99vr.
+            logger.warning(
+                "HTTP Auth Middleware: rejecting request to %s: no Authorization: "
+                "Bearer or X-META-ACCESS-TOKEN header", request.url.path,
+            )
+            return Response(
+                content=json.dumps({
+                    "error": "Unauthorized",
+                    "message": (
+                        "Authentication required. Send your Meta access token as "
+                        "Authorization: Bearer <token> or X-META-ACCESS-TOKEN."
+                    ),
+                }),
+                status_code=401,
+                media_type="application/json",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        logger.debug("HTTP Auth Middleware: Extracted auth token: [TOKEN PRESENT]")
+        logger.debug("Injecting auth token into request context")
+        FastMCPAuthIntegration.set_auth_token(auth_token)
 
         try:
             response = await call_next(request)
             return response
         finally:
-            if auth_token:
-                FastMCPAuthIntegration.clear_auth_token()
+            FastMCPAuthIntegration.clear_auth_token()
 
 def setup_starlette_middleware(app):
     """Add AuthInjectionMiddleware to the Starlette app if not already present.
@@ -208,8 +230,7 @@ def setup_starlette_middleware(app):
         app: Starlette app instance
     """
     if not app:
-        logger.error("Cannot setup Starlette middleware, app is None.")
-        return
+        raise RuntimeError("Cannot set up AuthInjectionMiddleware: app is None.")
 
     # Check if our specific middleware class is already in the stack
     already_added = False
@@ -219,10 +240,8 @@ def setup_starlette_middleware(app):
             break
 
     if not already_added:
-        try:
-            app.add_middleware(AuthInjectionMiddleware)
-            logger.info("AuthInjectionMiddleware added to Starlette app successfully.")
-        except Exception as e:
-            logger.error(f"Failed to add AuthInjectionMiddleware to Starlette app: {e}", exc_info=True)
+        # Let a failure propagate: an app without this gate must not be served.
+        app.add_middleware(AuthInjectionMiddleware)
+        logger.info("AuthInjectionMiddleware added to Starlette app successfully.")
     else:
         logger.debug("AuthInjectionMiddleware already present in Starlette app's middleware stack.")

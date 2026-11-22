@@ -280,8 +280,8 @@ def main():
         logger.info(f"Starting MCP server with Streamable HTTP transport on {args.host}:{args.port}")
         logger.info("Mode: Stateless (no session persistence)")
         logger.info(f"Response format: {'SSE' if args.sse_response else 'JSON'}")
-        logger.info("Primary auth method: Bearer Token (via Authorization: Bearer <token> header)")
-        logger.info("Fallback auth method: Custom Meta App OAuth (via X-META-APP-ID header)")
+        logger.info("Auth: every request must carry the caller's Meta token "
+                    "(Authorization: Bearer <token> or X-META-ACCESS-TOKEN); anonymous requests get 401")
         
         # Configure the existing server with streamable HTTP settings
         mcp_server.settings.host = args.host
@@ -306,8 +306,11 @@ def main():
             logger.info("Direct Meta tokens via X-META-ACCESS-TOKEN header")
 
         except Exception as e:
+            # Fail closed: without the gate every anonymous caller would run
+            # tools on the operator's token.
             logger.error(f"Failed to setup FastMCP HTTP authentication integration: {e}")
-            logger.warning("Server will still start but may not support header-based auth")
+            logger.error("Refusing to start the HTTP transport without its auth gate")
+            return 1
         
         # Log final server configuration
         logger.info(f"FastMCP server configured with:")
