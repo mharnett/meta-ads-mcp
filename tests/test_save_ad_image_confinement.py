@@ -72,13 +72,7 @@ def base(tmp_path, monkeypatch):
 async def _save(**kwargs):
     kwargs.setdefault("ad_id", AD_ID)
     raw = await ads.save_ad_image_locally(access_token=FAKE_TOKEN, **kwargs)
-    result = json.loads(raw)
-    # meta_api_tool re-wraps a plain {"error": "<str>"} as {"data": "<json>"}
-    # (its details/error probe raises on a string error). Unwrap that one
-    # level so the assertions read what the tool itself returned.
-    if set(result) == {"data"} and isinstance(result["data"], str):
-        result = json.loads(result["data"])
-    return result
+    return json.loads(raw)
 
 
 def _files_under(root):

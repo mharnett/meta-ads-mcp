@@ -718,7 +718,7 @@ async def get_ad_image(ad_id: str, access_token: Optional[str] = None) -> Image:
     if not ad_id:
         return "Error: No ad ID provided"
         
-    print(f"Attempting to get and analyze creative image for ad {ad_id}")
+    logger.info(f"Attempting to get and analyze creative image for ad {ad_id}")
     
     # First, get creative and account IDs
     ad_endpoint = f"{ad_id}"
@@ -791,7 +791,7 @@ async def get_ad_image(ad_id: str, access_token: Optional[str] = None) -> Image:
         
         # If still no image hashes found, try direct URL fallback approach
         if not image_hashes:
-            print("No image hashes found, trying direct URL fallback...")
+            logger.info("No image hashes found, trying direct URL fallback...")
             
             image_url = None
             if "data" in creative_data and creative_data["data"]:
@@ -805,24 +805,24 @@ async def get_ad_image(ad_id: str, access_token: Optional[str] = None) -> Image:
                 
                 if "image_urls_for_viewing" in creative and creative["image_urls_for_viewing"]:
                     image_url = creative["image_urls_for_viewing"][0]
-                    print(f"Using image_urls_for_viewing: {image_url}")
+                    logger.info(f"Using image_urls_for_viewing: {image_url}")
                 elif "image_url" in creative and creative["image_url"]:
                     image_url = creative["image_url"]
-                    print(f"Using image_url: {image_url}")
+                    logger.info(f"Using image_url: {image_url}")
                 elif "object_story_spec" in creative and "link_data" in creative["object_story_spec"]:
                     link_data = creative["object_story_spec"]["link_data"]
                     if "picture" in link_data and link_data["picture"]:
                         image_url = link_data["picture"]
-                        print(f"Using object_story_spec.link_data.picture: {image_url}")
+                        logger.info(f"Using object_story_spec.link_data.picture: {image_url}")
                 elif "thumbnail_url" in creative and creative["thumbnail_url"]:
                     image_url = creative["thumbnail_url"]
-                    print(f"Using thumbnail_url (fallback): {image_url}")
+                    logger.info(f"Using thumbnail_url (fallback): {image_url}")
             
             if not image_url:
                 return "Error: No image URLs found in creative"
             
             # Download the image directly
-            print(f"Downloading image from direct URL: {image_url}")
+            logger.info(f"Downloading image from direct URL: {image_url}")
             image_bytes = await download_image(image_url)
             
             if not image_bytes:
@@ -847,7 +847,7 @@ async def get_ad_image(ad_id: str, access_token: Optional[str] = None) -> Image:
             except Exception as e:
                 return f"Error processing image from direct URL: {str(e)}"
     
-    print(f"Found image hashes: {image_hashes}")
+    logger.info(f"Found image hashes: {image_hashes}")
     
     # Now fetch image data using adimages endpoint with specific format
     image_endpoint = f"act_{account_id}/adimages"
@@ -860,7 +860,7 @@ async def get_ad_image(ad_id: str, access_token: Optional[str] = None) -> Image:
         "hashes": hashes_str
     }
     
-    print(f"Requesting image data with params: {image_params}")
+    logger.debug(f"Requesting image data with params: {image_params}")
     image_data = await make_api_request(image_endpoint, access_token, image_params)
     
     if "error" in image_data:
@@ -876,7 +876,7 @@ async def get_ad_image(ad_id: str, access_token: Optional[str] = None) -> Image:
     if not image_url:
         return "Error: No valid image URL found"
     
-    print(f"Downloading image from URL: {image_url}")
+    logger.info(f"Downloading image from URL: {image_url}")
     
     # Download the image
     image_bytes = await download_image(image_url)
@@ -1037,7 +1037,7 @@ async def save_ad_image_locally(ad_id: str, access_token: Optional[str] = None, 
     except ValueError as e:
         return json.dumps({"error": str(e)}, indent=2)
             
-    print(f"Attempting to get and save creative image for ad {ad_id}")
+    logger.info(f"Attempting to get and save creative image for ad {ad_id}")
         
     # First, get creative and account IDs
     ad_endpoint = f"{ad_id}"
@@ -1092,7 +1092,7 @@ async def save_ad_image_locally(ad_id: str, access_token: Optional[str] = None, 
     if not image_hashes:
         return json.dumps({"error": "No image hashes found in creative or fallback"}, indent=2)
 
-    print(f"Found image hashes: {image_hashes}")
+    logger.info(f"Found image hashes: {image_hashes}")
         
     # Fetch image data using the first hash
     image_endpoint = f"act_{account_id}/adimages"
@@ -1102,7 +1102,7 @@ async def save_ad_image_locally(ad_id: str, access_token: Optional[str] = None, 
         "hashes": hashes_str
     }
         
-    print(f"Requesting image data with params: {image_params}")
+    logger.debug(f"Requesting image data with params: {image_params}")
     image_data = await make_api_request(image_endpoint, access_token, image_params)
         
     if "error" in image_data:
@@ -1117,7 +1117,7 @@ async def save_ad_image_locally(ad_id: str, access_token: Optional[str] = None, 
     if not image_url:
         return json.dumps({"error": "No valid image URL found in API response"}, indent=2)
             
-    print(f"Downloading image from URL: {image_url}")
+    logger.info(f"Downloading image from URL: {image_url}")
         
     # Download and Save Image
     image_bytes = await download_image(image_url)
@@ -1144,7 +1144,7 @@ async def save_ad_image_locally(ad_id: str, access_token: Optional[str] = None, 
         with open(filepath, "wb") as f:
             f.write(image_bytes)
                 
-        print(f"Image saved successfully to: {filepath}")
+        logger.info(f"Image saved successfully to: {filepath}")
         return json.dumps({"filepath": filepath}, indent=2) # Return JSON with filepath
 
     except Exception as e:
@@ -1367,7 +1367,7 @@ async def upload_ad_image(
         }
 
         # Make API request to upload the image
-        print(f"Uploading image to Facebook Ad Account {account_id}")
+        logger.info(f"Uploading image to Facebook Ad Account {account_id}")
         data = await make_api_request(endpoint, access_token, params, method="POST")
 
         # Normalize/structure the response for callers (e.g., to easily grab image_hash)
@@ -1947,7 +1947,7 @@ async def create_ad_creative(
             if page_discovery_result.get("success"):
                 page_id = page_discovery_result["page_id"]
                 page_name = page_discovery_result.get("page_name", "Unknown")
-                print(f"Auto-discovered page ID: {page_id} ({page_name})")
+                logger.info(f"Auto-discovered page ID: {page_id} ({page_name})")
             else:
                 return json.dumps({
                     "error": "No page ID provided and no suitable pages found for this account",

@@ -117,9 +117,9 @@ class TestGetAdCreativesBugFix:
         result = await get_ad_creatives(access_token="test_token", ad_id=None)
         result_data = json.loads(result)
         
-        # The @meta_api_tool decorator wraps the result in a data field
-        assert "data" in result_data
-        error_data = json.loads(result_data["data"])
+        # meta_api_tool returns the tool's error JSON as-is, not wrapped in "data"
+        assert "data" not in result_data
+        error_data = result_data
         assert "error" in error_data
         assert error_data["error"] == "No ad ID provided"
 

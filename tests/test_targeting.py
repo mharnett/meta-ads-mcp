@@ -71,9 +71,9 @@ class TestSearchInterests:
         )
 
         result_data = json.loads(result)
-        # The @meta_api_tool decorator wraps errors in a 'data' field
-        assert "data" in result_data
-        nested_data = json.loads(result_data["data"])
+        # meta_api_tool returns the tool's error JSON as-is, not wrapped in "data"
+        assert "data" not in result_data
+        nested_data = result_data
         assert "error" in nested_data
         assert nested_data["error"] == "No search query provided"
 
@@ -165,9 +165,9 @@ class TestGetInterestSuggestions:
         )
 
         result_data = json.loads(result)
-        # The @meta_api_tool decorator wraps errors in a 'data' field
-        assert "data" in result_data
-        nested_data = json.loads(result_data["data"])
+        # meta_api_tool returns the tool's error JSON as-is, not wrapped in "data"
+        assert "data" not in result_data
+        nested_data = result_data
         assert "error" in nested_data
         assert nested_data["error"] == "No interest list provided"
 
@@ -258,9 +258,9 @@ class TestEstimateAudienceSizeBackwardsCompatibility:
         result = await estimate_audience_size(access_token="test_token")
         
         result_data = json.loads(result)
-        # The @meta_api_tool decorator wraps errors in a 'data' field
-        assert "data" in result_data
-        nested_data = json.loads(result_data["data"])
+        # meta_api_tool returns the tool's error JSON as-is, not wrapped in "data"
+        assert "data" not in result_data
+        nested_data = result_data
         assert "error" in nested_data
         assert nested_data["error"] == "No interest list or FBID list provided"
 
@@ -413,9 +413,9 @@ class TestSearchGeoLocations:
         )
         
         result_data = json.loads(result)
-        # The @meta_api_tool decorator wraps errors in a 'data' field
-        assert "data" in result_data
-        nested_data = json.loads(result_data["data"])
+        # meta_api_tool returns the tool's error JSON as-is, not wrapped in "data"
+        assert "data" not in result_data
+        nested_data = result_data
         assert "error" in nested_data
         assert nested_data["error"] == "No search query provided"
     

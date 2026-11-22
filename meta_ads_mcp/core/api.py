@@ -348,29 +348,37 @@ def meta_api_tool(func):
             if isinstance(result, str):
                 try:
                     result_dict = json.loads(result)
-                    if "error" in result_dict:
-                        logger.error(f"Error in API response: {result_dict['error']}")
-                        # If this is an app ID error, log more details
-                        if isinstance(result_dict.get("details", {}).get("error", {}), dict):
-                            error_obj = result_dict["details"]["error"]
-                            if error_obj.get("code") == 200 and "Provide valid app ID" in error_obj.get("message", ""):
-                                logger.error("Meta API authentication configuration issue")
-                                logger.error(f"Current app_id: {app_id}")
-                                # Replace the confusing error with a more user-friendly one
-                                return json.dumps({
-                                    "error": {
-                                        "message": "Meta API Configuration Issue",
-                                        "details": {
-                                            "description": "Your Meta API app is not properly configured",
-                                            "action_required": "Check your META_APP_ID environment variable",
-                                            "current_app_id": app_id,
-                                            "original_error": error_obj.get("message")
-                                        }
-                                    }
-                                }, indent=2)
-                except Exception:
-                    # Not JSON or other parsing error, wrap it in a dictionary
+                except (json.JSONDecodeError, ValueError):
+                    # Not JSON: wrap it in a dictionary
                     return json.dumps({"data": result}, indent=2)
+                # Inspect errors without raising. Most errors have no
+                # top-level "details" (make_api_request nests it under
+                # "error"), and a KeyError here used to rewrap the whole
+                # error as a {"data": "<json string>"} payload.
+                if isinstance(result_dict, dict) and "error" in result_dict:
+                    logger.error(f"Error in API response: {result_dict['error']}")
+                    # If this is an app ID error, log more details
+                    details = result_dict.get("details")
+                    error_obj = details.get("error") if isinstance(details, dict) else None
+                    if (
+                        isinstance(error_obj, dict)
+                        and error_obj.get("code") == 200
+                        and "Provide valid app ID" in str(error_obj.get("message", ""))
+                    ):
+                        logger.error("Meta API authentication configuration issue")
+                        logger.error(f"Current app_id: {app_id}")
+                        # Replace the confusing error with a more user-friendly one
+                        return json.dumps({
+                            "error": {
+                                "message": "Meta API Configuration Issue",
+                                "details": {
+                                    "description": "Your Meta API app is not properly configured",
+                                    "action_required": "Check your META_APP_ID environment variable",
+                                    "current_app_id": app_id,
+                                    "original_error": error_obj.get("message")
+                                }
+                            }
+                        }, indent=2)
 
             # If result is already a dictionary, ensure it's properly serialized
             if isinstance(result, dict):

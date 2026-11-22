@@ -11,6 +11,7 @@ import os
 import json
 import logging
 import pathlib
+import sys
 import platform
 import ipaddress
 import socket
@@ -24,10 +25,12 @@ META_APP_SECRET = os.environ.get("META_APP_SECRET", "")
 # surface a warning so the user knows why downstream auth calls will fail.
 if not os.environ.get("META_ACCESS_TOKEN"):
     if not META_APP_ID:
-        print("WARNING: META_APP_ID environment variable is not set.")
-        print("Set META_ACCESS_TOKEN for direct-token auth, or META_APP_ID for the local OAuth flow.")
+        # stderr, not stdout: under the stdio transport stdout is the JSON-RPC
+        # channel, and logging is not configured yet at import time.
+        print("WARNING: META_APP_ID environment variable is not set.", file=sys.stderr)
+        print("Set META_ACCESS_TOKEN for direct-token auth, or META_APP_ID for the local OAuth flow.", file=sys.stderr)
     if not META_APP_SECRET:
-        print("NOTE: META_APP_SECRET is not set. Required only to exchange for long-lived tokens via the local OAuth flow.")
+        print("NOTE: META_APP_SECRET is not set. Required only to exchange for long-lived tokens via the local OAuth flow.", file=sys.stderr)
 
 # The log file sits next to the token cache and records request activity, so it
 # gets the same owner-only treatment. See GHSA-prmg-4fr3-mm6x for the cache.
@@ -325,11 +328,10 @@ async def download_image(url: str) -> Optional[bytes]:
         validate_public_url(url)
     except BlockedURLError as e:
         logger.warning("Refusing to download image from disallowed URL: %s", e)
-        print(f"Refusing to download image from disallowed URL: {e}")
         return None
 
     try:
-        print(f"Attempting to download image from URL: {url}")
+        logger.info(f"Attempting to download image from URL: {url}")
 
         # Use minimal headers like curl does
         headers = {
@@ -347,25 +349,24 @@ async def download_image(url: str) -> Optional[bytes]:
 
             # Check response
             if response.status_code == 200:
-                print(f"Successfully downloaded image: {len(response.content)} bytes")
+                logger.info(f"Successfully downloaded image: {len(response.content)} bytes")
                 return response.content
             else:
-                print(f"Failed to download image: HTTP {response.status_code}")
+                logger.warning(f"Failed to download image: HTTP {response.status_code}")
                 return None
 
     except BlockedURLError as e:
         # A redirect pointed at a disallowed (non-public) address.
         logger.warning("Blocked SSRF redirect during image download: %s", e)
-        print(f"Blocked image download (redirect to disallowed address): {e}")
         return None
     except httpx.HTTPStatusError as e:
-        print(f"HTTP Error when downloading image: {e}")
+        logger.warning(f"HTTP Error when downloading image: {e}")
         return None
     except httpx.RequestError as e:
-        print(f"Request Error when downloading image: {e}")
+        logger.warning(f"Request Error when downloading image: {e}")
         return None
     except Exception as e:
-        print(f"Unexpected error downloading image: {e}")
+        logger.warning(f"Unexpected error downloading image: {e}")
         return None
 
 
@@ -393,7 +394,7 @@ async def try_multiple_download_methods(url: str) -> Optional[bytes]:
     if image_data:
         return image_data
 
-    print("Direct download failed, trying alternative methods...")
+    logger.info("Direct download failed, trying alternative methods...")
 
     # Method 2: Try adding Facebook cookie simulation
     try:
@@ -409,10 +410,10 @@ async def try_multiple_download_methods(url: str) -> Optional[bytes]:
         ) as client:
             response = await client.get(url, headers=headers, timeout=30.0)
             response.raise_for_status()
-            print(f"Method 2 succeeded with cookie simulation: {len(response.content)} bytes")
+            logger.info(f"Method 2 succeeded with cookie simulation: {len(response.content)} bytes")
             return response.content
     except Exception as e:
-        print(f"Method 2 failed: {str(e)}")
+        logger.warning(f"Method 2 failed: {str(e)}")
 
     # Method 3: Try with session that keeps redirects and cookies
     try:
@@ -425,10 +426,10 @@ async def try_multiple_download_methods(url: str) -> Optional[bytes]:
             # Then try the image URL
             response = await client.get(url, timeout=30.0)
             response.raise_for_status()
-            print(f"Method 3 succeeded with Facebook session: {len(response.content)} bytes")
+            logger.info(f"Method 3 succeeded with Facebook session: {len(response.content)} bytes")
             return response.content
     except Exception as e:
-        print(f"Method 3 failed: {str(e)}")
+        logger.warning(f"Method 3 failed: {str(e)}")
 
     return None
 
