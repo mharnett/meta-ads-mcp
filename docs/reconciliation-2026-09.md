@@ -87,3 +87,11 @@ A card must be filed against `mharnett/drak-stack-monorepo` to add `meta-ads-mcp
 `automation/git-janitor/upstream_diff_sweep.py`'s `RECONCILED_FORKS`, pinned to tip
 `2ef198e266ca6a37b6dc2c42335f0a0885002771`. That edit is out of scope for this record — see the
 PR's "Requested follow-ups" section for the exact card to file.
+
+## Addendum 2026-11-21
+
+The HTTP auth-gate behaviour of `ef2592d`, `14d7371` and `95e8527` (reject requests with no
+caller token; gate the served app under `--sse-response`) was re-implemented on this fork's
+middleware rather than cherry-picked, and startup now fails closed if the gate can't be
+installed. Their rows above stay `decline` as the 2026-09 record of what was ported then.
+

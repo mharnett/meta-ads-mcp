@@ -18,11 +18,9 @@ python -m meta_ads_mcp --transport streamable-http --host 0.0.0.0 --port 9000
 
 ### 2. Set Authentication
 
-Provide a Meta access token either via the process environment (`META_ACCESS_TOKEN`) or per-request via the `Authorization: Bearer` header.
+Every HTTP request must carry the caller's own Meta access token, in the `Authorization: Bearer` header or the `X-META-ACCESS-TOKEN` header. A request with neither gets `401 Unauthorized` (`WWW-Authenticate: Bearer`) before any tool runs. The server's own `META_ACCESS_TOKEN` is never used on behalf of an HTTP caller.
 
-```bash
-export META_ACCESS_TOKEN=your_meta_system_user_token
-```
+If the auth gate can't be installed at startup, the server exits with status 1 instead of serving without it.
 
 ### 3. Make HTTP Requests
 
@@ -68,6 +66,8 @@ python -m meta_ads_mcp --transport streamable-http --port 9000
 ```
 
 ## Authentication
+
+Requests without one of the two headers below are rejected with `401`.
 
 ### Primary Method: Bearer Token
 

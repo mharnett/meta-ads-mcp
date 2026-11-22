@@ -62,7 +62,8 @@ def _wait_for_ready(url: str, proc: subprocess.Popen, timeout: float) -> None:
                 f"before becoming ready.\nstderr:\n{stderr}"
             )
         try:
-            r = requests.get(url + "/", timeout=1.0)
+            # Authenticated, so readiness doesn't hinge on the 401 gate.
+            r = requests.get(url + "/", headers=AUTH, timeout=1.0)
             # FastMCP returns 404 at "/" — that's a live server.
             if r.status_code in (200, 404):
                 return
@@ -75,9 +76,8 @@ def _wait_for_ready(url: str, proc: subprocess.Popen, timeout: float) -> None:
     )
 
 
-@pytest.fixture(scope="session")
-def mcp_http_server():
-    """Spawn the MCP server as a subprocess and tear it down at session end.
+def _spawn_server(extra_args=()):
+    """Spawn the MCP server as a subprocess and yield it until teardown.
 
     Yields a dict with the bound URL and the live Popen object. Hard-fails
     (does NOT skip) if the subprocess cannot be started or never becomes
@@ -96,13 +96,17 @@ def mcp_http_server():
         str(port),
         "--host",
         "127.0.0.1",
+        *extra_args,
     ]
     env = os.environ.copy()
-    # Don't accidentally pick up the dev shell's auth — we want auth-free
-    # smoke. Tools will return "Authentication Required" payloads, which is
-    # what we're asserting on for the tool-call round-trip test.
-    for k in ("META_ACCESS_TOKEN", "PIPEBOARD_API_TOKEN"):
-        env.pop(k, None)
+    # Strip every META_* / PIPEBOARD_* var, not just the token. This fixture
+    # is session-scoped, so it copies os.environ before the per-test
+    # _isolate_auth_env fixture runs, and an earlier test that set
+    # META_APP_ID directly leaks into the child. With one leaked, the
+    # server's tools tried a real Graph call in a full-suite run.
+    for k in list(env):
+        if k.startswith(("META_", "PIPEBOARD_")):
+            env.pop(k)
 
     proc = subprocess.Popen(
         cmd,
@@ -132,6 +136,21 @@ def mcp_http_server():
                 proc.wait(timeout=SHUTDOWN_TIMEOUT_S)
 
 
+@pytest.fixture(scope="session")
+def mcp_http_server():
+    yield from _spawn_server()
+
+
+@pytest.fixture(scope="session")
+def mcp_http_server_sse():
+    yield from _spawn_server(["--sse-response"])
+
+
+# Any non-empty bearer admits the request; the tools below never send it
+# anywhere (tools/list and compute_image_crops make no Graph call).
+AUTH = {"Authorization": "Bearer smoke-test-not-a-real-token"}
+
+
 def _post_jsonrpc(server, method, params=None, extra_headers=None, req_id=1):
     """POST a JSON-RPC request. We POST to `/mcp` (no trailing slash) to
     avoid the 307 redirect that FastMCP issues from `/mcp/`."""
@@ -153,13 +172,13 @@ def test_server_root_responds(mcp_http_server):
     """Confirm the autostarted server is up. If the autostart fixture
     succeeded, this is essentially a no-op — but it documents the
     expected baseline."""
-    r = requests.get(f"{mcp_http_server['url']}/", timeout=5)
+    r = requests.get(f"{mcp_http_server['url']}/", headers=AUTH, timeout=5)
     assert r.status_code in (200, 404)
 
 
 def test_tools_list_returns_well_formed_jsonrpc(mcp_http_server):
     """JSON-RPC 2.0 framing: tools/list response has jsonrpc/id/result."""
-    r = _post_jsonrpc(mcp_http_server, "tools/list", params={}, req_id=42)
+    r = _post_jsonrpc(mcp_http_server, "tools/list", params={}, extra_headers=AUTH, req_id=42)
     assert r.status_code == 200, r.text
     body = r.json()
     assert body.get("jsonrpc") == "2.0"
@@ -174,17 +193,15 @@ def test_tools_list_returns_well_formed_jsonrpc(mcp_http_server):
 
 
 def test_tool_call_round_trip(mcp_http_server):
-    """End-to-end JSON-RPC tools/call round trip.
+    """End-to-end JSON-RPC tools/call round trip for an authenticated caller.
 
-    We call `get_ad_accounts` with no auth. The server should accept the
-    request, dispatch to the tool, and return a JSON-RPC result containing
-    an "Authentication Required" payload (since no token is configured).
-    The point is that the full wire round trip works — transport, dispatch,
-    and serialization."""
+    compute_image_crops is pure arithmetic, so the round trip proves
+    transport, dispatch and serialization without any Graph call."""
     r = _post_jsonrpc(
         mcp_http_server,
         "tools/call",
-        params={"name": "get_ad_accounts", "arguments": {"limit": 1}},
+        params={"name": "compute_image_crops", "arguments": {"image_width": 1080, "image_height": 1080}},
+        extra_headers=AUTH,
         req_id=7,
     )
     assert r.status_code == 200, r.text
@@ -194,10 +211,23 @@ def test_tool_call_round_trip(mcp_http_server):
     assert "result" in body, body
     content = body["result"].get("content", [])
     assert content, body
-    text = content[0].get("text", "")
-    # Either a real result or an auth-required payload; both prove the
-    # round trip worked. With no token, the latter is expected.
-    assert "Authentication" in text or "account" in text.lower()
+    assert "100x100" in content[0].get("text", "")
+
+
+@pytest.mark.parametrize("server_fixture", ["mcp_http_server", "mcp_http_server_sse"])
+def test_anonymous_tool_call_is_refused_over_the_wire(server_fixture, request):
+    """No credential header: the real server answers 401 before dispatch,
+    in both response modes, instead of running the tool on the operator's
+    token."""
+    server = request.getfixturevalue(server_fixture)
+    r = _post_jsonrpc(
+        server,
+        "tools/call",
+        params={"name": "get_ad_accounts", "arguments": {"limit": 1}},
+        req_id=8,
+    )
+    assert r.status_code == 401, r.text
+    assert r.headers.get("WWW-Authenticate") == "Bearer"
 
 
 def test_authorization_header_accepted(mcp_http_server):
