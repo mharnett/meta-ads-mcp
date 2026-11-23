@@ -1,4 +1,5 @@
 """Test that access tokens are not leaked in error responses."""
+import json
 import pytest
 import sys
 from pathlib import Path
@@ -143,3 +144,89 @@ class TestCallerParamsNotMutated:
             await make_api_request("act_123/adsets", "SECOND_TOKEN_VALUE", caller_params)
 
         assert caller_params == {"fields": "id"}
+
+
+class TestTokenNotEchoedInResponseBody:
+    """Graph API writes the request's access_token into paging.next/previous.
+
+    This server sends the token as a query parameter, so every list response
+    with another page came back with a "next" URL carrying the live token, and
+    the list tools (get_campaigns, get_adsets, get_ads, get_insights, ...)
+    json.dumps that body straight into the tool output. Observed 2026-11-23 on
+    get_campaigns against a real account.
+    """
+
+    TOKEN = "LIVE_TOKEN_IN_PAGING_0123456789"
+    NEXT = (
+        "https://graph.facebook.com/v24.0/act_123/campaigns"
+        f"?access_token={TOKEN}&fields=id%2Cname&limit=10&after=QVFIUmN1cnNvcg%3D%3D"
+    )
+    PREVIOUS = (
+        "https://graph.facebook.com/v24.0/act_123/campaigns"
+        f"?access_token={TOKEN}&limit=10&before=QVFIUmJlZm9yZQ%3D%3D"
+    )
+
+    def _body(self):
+        return {
+            "data": [{"id": "1", "name": "c1"}],
+            "paging": {
+                "cursors": {"before": "QVFIUmJlZm9yZQ==", "after": "QVFIUmN1cnNvcg=="},
+                "next": self.NEXT,
+                "previous": self.PREVIOUS,
+            },
+        }
+
+    def _mock_client(self, body):
+        from unittest.mock import AsyncMock, MagicMock
+
+        response = MagicMock()
+        response.status_code = 200
+        response.json.return_value = body
+        response.raise_for_status.return_value = None
+        client = MagicMock()
+        client.get = AsyncMock(return_value=response)
+        client.post = AsyncMock(return_value=response)
+        client.delete = AsyncMock(return_value=response)
+        ctx = MagicMock()
+        ctx.__aenter__ = AsyncMock(return_value=client)
+        ctx.__aexit__ = AsyncMock(return_value=False)
+        return MagicMock(return_value=ctx)
+
+    async def test_make_api_request_strips_token_from_paging_urls(self):
+        from unittest.mock import patch
+        from urllib.parse import urlparse, parse_qs
+        from meta_ads_mcp.core.api import make_api_request
+
+        with patch("meta_ads_mcp.core.api.httpx.AsyncClient", self._mock_client(self._body())):
+            result = await make_api_request("act_123/campaigns", self.TOKEN, {"limit": 10})
+
+        assert self.TOKEN not in json.dumps(result)
+        nxt = parse_qs(urlparse(result["paging"]["next"]).query)
+        assert "access_token" not in nxt
+        # Paging still works: the cursor and other params survive.
+        assert nxt["after"] == ["QVFIUmN1cnNvcg=="]
+        assert nxt["limit"] == ["10"]
+        assert result["paging"]["cursors"]["after"] == "QVFIUmN1cnNvcg=="
+        assert result["data"] == [{"id": "1", "name": "c1"}]
+
+    async def test_nested_urls_in_lists_are_stripped(self):
+        from unittest.mock import patch
+        from meta_ads_mcp.core.api import make_api_request
+
+        body = {"data": [{"id": "1", "insights": {"data": [], "paging": {"next": self.NEXT}}}]}
+        with patch("meta_ads_mcp.core.api.httpx.AsyncClient", self._mock_client(body)):
+            result = await make_api_request("act_123/campaigns", self.TOKEN, {})
+
+        assert self.TOKEN not in json.dumps(result)
+        assert "after=" in result["data"][0]["insights"]["paging"]["next"]
+
+    async def test_get_campaigns_tool_output_has_no_token(self):
+        """The leak as observed: the tool's own JSON output."""
+        from unittest.mock import patch
+        from meta_ads_mcp.core.campaigns import get_campaigns
+
+        with patch("meta_ads_mcp.core.api.httpx.AsyncClient", self._mock_client(self._body())):
+            out = await get_campaigns(account_id="act_123", access_token=self.TOKEN, limit=10)
+
+        assert self.TOKEN not in out
+        assert "after=" in json.loads(out)["paging"]["next"]
