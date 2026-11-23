@@ -34,6 +34,23 @@ def redact_access_token_from_url(url: str) -> str:
     return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, new_query, parsed.fragment))
 
 
+def redact_access_tokens_in_body(obj: Any) -> Any:
+    """Strip access_token from every URL string in a Graph API response body.
+
+    Graph writes the request's access_token into paging.next / paging.previous
+    because this server sends the token as a query parameter, and the list tools
+    json.dumps the body straight into their output. Only strings that carry
+    "access_token=" are rewritten; cursors and all other values pass through.
+    """
+    if isinstance(obj, dict):
+        return {k: redact_access_tokens_in_body(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [redact_access_tokens_in_body(v) for v in obj]
+    if isinstance(obj, str) and "access_token=" in obj:
+        return redact_access_token_from_url(obj)
+    return obj
+
+
 def ensure_act_prefix(account_id: str) -> str:
     """Ensure account_id has 'act_' prefix for Meta Ads API compatibility."""
     if not account_id:
@@ -172,7 +189,7 @@ async def make_api_request(
 
                 # Ensure the response is JSON and return it as a dictionary
                 try:
-                    return response.json()
+                    return redact_access_tokens_in_body(response.json())
                 except json.JSONDecodeError:
                     return {
                         "text_response": response.text,
