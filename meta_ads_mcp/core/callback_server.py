@@ -3,14 +3,14 @@
 import threading
 import socket
 import asyncio
-import json
+import html as html_lib
 import logging
 import secrets
 import time
 import webbrowser
 import os
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs, quote
+from urllib.parse import urlparse, parse_qs
 from typing import Dict, Any, Optional
 
 from .utils import logger
@@ -70,6 +70,21 @@ server_shutdown_timer = None
 # Timeout in seconds before shutting down the callback server
 CALLBACK_SERVER_TIMEOUT = 180  # 3 minutes timeout
 
+# The `error` query parameter is attacker-controllable (any page in the browser
+# can navigate to the localhost callback), so it is HTML-escaped and capped
+# before it is reflected (GHSA-6v2r-2m4r-768m, ported from upstream 271ea4c).
+MAX_ERROR_DISPLAY_LENGTH = 200
+
+# Sent on every callback response. CSP default-src 'none' means an injected
+# script cannot run even if escaping is ever bypassed; the success page's own
+# inline script is allowed by a per-response nonce instead of loosening it.
+_CALLBACK_SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+    "Cache-Control": "no-store",
+}
+
 
 class CallbackHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -98,11 +113,8 @@ class CallbackHandler(BaseHTTPRequestHandler):
         state = params.get('state', [None])[0]
         error = params.get('error', [None])[0]
         
-        # Send 200 OK response with a simple HTML page
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self.end_headers()
-        
+        script_nonce = None
+
         if error:
             # User denied access or other error occurred
             html = f"""
@@ -110,27 +122,28 @@ class CallbackHandler(BaseHTTPRequestHandler):
             <head><title>Authorization Failed</title></head>
             <body>
                 <h1>Authorization Failed</h1>
-                <p>Error: {error}</p>
+                <p>Error: {html_lib.escape(error[:MAX_ERROR_DISPLAY_LENGTH], quote=True)}</p>
                 <p>The authorization was cancelled or failed. You can close this window.</p>
             </body>
             </html>
             """
-            logger.error(f"OAuth authorization failed: {error}")
+            logger.error(f"OAuth authorization failed: {error[:MAX_ERROR_DISPLAY_LENGTH]!r}")
         elif code and validate_and_store_callback(code, state):
             # Success case - authorization code received AND CSRF state validated.
             # The auth module will exchange this code for an access token.
-            html = """
+            script_nonce = secrets.token_urlsafe(16)
+            html = f"""
             <html>
             <head><title>Authorization Successful</title></head>
             <body>
                 <h1>✅ Authorization Successful!</h1>
                 <p>You have successfully authorized the Meta Ads MCP application.</p>
                 <p>You can now close this window and return to your application.</p>
-                <script>
+                <script nonce="{script_nonce}">
                     // Try to close the window automatically after 2 seconds
-                    setTimeout(function() {
+                    setTimeout(function() {{
                         window.close();
-                    }, 2000);
+                    }}, 2000);
                 </script>
             </body>
             </html>
@@ -161,7 +174,16 @@ class CallbackHandler(BaseHTTPRequestHandler):
             </html>
             """
             logger.warning("OAuth callback received without code or error")
-        
+
+        csp = "default-src 'none'"
+        if script_nonce:
+            csp += f"; script-src 'nonce-{script_nonce}'"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Security-Policy", csp)
+        for name, value in _CALLBACK_SECURITY_HEADERS.items():
+            self.send_header(name, value)
+        self.end_headers()
         self.wfile.write(html.encode())
 
     # Silence server logs

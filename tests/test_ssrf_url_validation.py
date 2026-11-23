@@ -41,6 +41,18 @@ BLOCKED_URLS = [
     "http://[fe80::1]/",                   # IPv6 link-local
     "http://[fc00::1]/",                   # IPv6 unique-local (private)
     "https://169.254.169.254/",            # https also blocked
+    # GHSA-cx77-j6h8-3382 (ported from upstream d136b4c): non-public, but
+    # neither private nor reserved, so the category denylist let these through.
+    "http://100.64.1.1/internal",          # RFC 6598 shared address space (CGNAT)
+    "http://100.127.255.254/",             # top of the shared range
+    "http://[::ffff:100.64.1.1]/",         # IPv4-mapped shared address
+    "http://192.0.0.1/",                   # IETF protocol assignments
+    "http://198.18.0.5/",                  # benchmarking range
+    "http://192.0.2.9/",                   # TEST-NET-1
+    "http://198.51.100.9/",                # TEST-NET-2
+    "http://203.0.113.9/",                 # TEST-NET-3
+    "http://240.0.0.1/",                   # reserved (class E)
+    "http://[2001:db8::1]/",               # IPv6 documentation range
 ]
 
 
