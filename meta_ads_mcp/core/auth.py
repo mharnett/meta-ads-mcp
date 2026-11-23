@@ -131,6 +131,28 @@ class TokenInfo:
         return token
 
 
+# The token cache holds a long-lived Meta access token, so it must be readable
+# only by its owner (GHSA-prmg-4fr3-mm6x, ported from upstream d5eacee).
+TOKEN_CACHE_FILE_MODE = 0o600
+TOKEN_CACHE_DIR_MODE = 0o700
+
+
+def _restrict_permissions(path: pathlib.Path, mode: int) -> None:
+    """Narrow `path` to `mode` if it differs, best effort.
+
+    Also repairs caches written by earlier versions, so the owner does not have
+    to re-authenticate to get a private file. POSIX only: on Windows chmod
+    cannot express "owner only", and access is governed by ACLs instead.
+    """
+    if platform.system() == "Windows":
+        return
+    try:
+        if (path.stat().st_mode & 0o777) != mode:
+            os.chmod(path, mode)
+    except OSError as e:
+        logger.warning(f"Could not restrict permissions on {path}: {e}")
+
+
 class AuthManager:
     """Manages authentication with Meta APIs"""
     def __init__(self, app_id: str, redirect_uri: str = AUTH_REDIRECT_URI):
@@ -150,8 +172,11 @@ class AuthManager:
         
         # Create directory if it doesn't exist
         cache_dir = base_path / "meta-ads-mcp"
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        
+        cache_dir.mkdir(parents=True, exist_ok=True, mode=TOKEN_CACHE_DIR_MODE)
+        # mkdir's mode is masked by the umask and is a no-op for a directory that
+        # already exists, so narrow it explicitly either way.
+        _restrict_permissions(cache_dir, TOKEN_CACHE_DIR_MODE)
+
         return cache_dir / "token_cache.json"
     
     def _load_cached_token(self) -> bool:
@@ -160,7 +185,9 @@ class AuthManager:
         
         if not cache_path.exists():
             return False
-        
+
+        _restrict_permissions(cache_path, TOKEN_CACHE_FILE_MODE)
+
         try:
             with open(cache_path, "r") as f:
                 data = json.load(f)
@@ -222,10 +249,13 @@ class AuthManager:
         cache_path = self._get_token_cache_path()
 
         try:
-            # Use os.open with 0o600 (owner read/write only) to prevent world-readable secrets
+            # Use os.open with 0o600 (owner read/write only) to prevent world-readable
+            # secrets. O_CREAT's mode only applies when the file is created, so an
+            # existing cache from an earlier version is narrowed afterwards.
             flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
-            with os.fdopen(os.open(cache_path, flags, 0o600), "w") as f:
+            with os.fdopen(os.open(cache_path, flags, TOKEN_CACHE_FILE_MODE), "w") as f:
                 json.dump(self.token_info.serialize(), f)
+            _restrict_permissions(cache_path, TOKEN_CACHE_FILE_MODE)
             logger.info(f"Token cached at: {cache_path}")
         except Exception as e:
             logger.error(f"Error saving token to cache: {e}")
